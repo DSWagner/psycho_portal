@@ -18,6 +18,25 @@ if TYPE_CHECKING:
 
 # ── Type maps ─────────────────────────────────────────────────────────────────
 
+def _try_repair_json(raw: str) -> dict | None:
+    """
+    Attempt to repair truncated JSON by closing any open arrays/objects.
+    Returns parsed dict or None if unrepairable.
+    """
+    # Walk through and try to close at reasonable cut-off points
+    for end in range(len(raw) - 1, max(len(raw) - 200, 0), -1):
+        candidate = raw[:end]
+        # Try closing with common endings
+        for suffix in ("}}", "]}}", "]}", "}"):
+            try:
+                result = json.loads(candidate + suffix)
+                if isinstance(result, dict):
+                    return result
+            except json.JSONDecodeError:
+                continue
+    return None
+
+
 _NODE_TYPE_MAP: dict[str, NodeType] = {
     "concept": NodeType.CONCEPT,
     "entity": NodeType.ENTITY,
@@ -58,25 +77,31 @@ _EDGE_TYPE_MAP: dict[str, EdgeType] = {
 # ── Prompt templates ──────────────────────────────────────────────────────────
 
 CONVERSATION_EXTRACTION_PROMPT = """\
-Extract structured knowledge from this conversation exchange.
+Extract structured knowledge from this conversation exchange to build a personal knowledge graph.
 Return ONLY a valid JSON object. No explanation, no markdown, just JSON.
 
 User message: {user_message}
 Assistant response: {agent_response}
 
+Focus on extracting knowledge ABOUT THE USER: their projects, preferences, skills, goals, habits, and identity.
+Also extract factual knowledge discussed.
+
 Extract:
 {{
   "entities": [
-    {{"label": "name", "type": "concept|entity|person|technology|fact|preference|skill|topic", "domain": "coding|health|general|science|math|other", "properties": {{}}}}
+    {{"label": "lowercase name", "type": "concept|entity|person|technology|fact|preference|skill|topic", "domain": "coding|health|tasks|general|science|math|finance|other", "properties": {{}}}}
   ],
   "relationships": [
-    {{"from_label": "source entity", "to_label": "target entity", "type": "is_a|part_of|relates_to|has_property|depends_on|causes|used_in|supports|preferred_by|knows"}}
+    {{"from_label": "source", "to_label": "target", "type": "is_a|part_of|relates_to|has_property|depends_on|causes|used_in|supports|preferred_by|knows|works_on"}}
   ],
   "user_preferences": [
-    {{"label": "preference description", "domain": "domain"}}
+    {{"label": "specific preference (e.g. prefers dark mode, uses Python 3.12, works in VS Code)", "domain": "domain"}}
+  ],
+  "user_identity": [
+    {{"key": "name|occupation|location|current_project|goal|habit|language|framework", "value": "extracted value"}}
   ],
   "corrections": [
-    {{"wrong_label": "incorrect entity/fact label", "correct_label": "corrected entity/fact label", "explanation": "what changed"}}
+    {{"wrong_label": "incorrect info", "correct_label": "correct info", "explanation": "what changed"}}
   ],
   "key_facts": [
     "specific factual statement extracted verbatim or paraphrased"
@@ -87,9 +112,11 @@ Extract:
 }}
 
 Rules:
-- Normalize all labels to lowercase
+- Normalize entity labels to lowercase
+- PRIORITIZE user identity/preferences/projects — these are the most valuable signals
+- user_identity: extract whenever user says "I am", "I use", "I work on", "my name is", "I prefer", "I'm building"
 - Only extract what was EXPLICITLY stated or clearly implied
-- Skip trivial exchanges (greetings, single-word answers)
+- Skip trivial exchanges (greetings only, single-word answers)
 - Properties should be specific: {{"version": "3.12", "paradigm": "OOP"}}
 - Be selective: 3-8 entities per exchange is ideal
 - Return empty arrays if nothing relevant"""
@@ -196,14 +223,17 @@ class KnowledgeExtractor:
         """Call LLM and parse the extraction response."""
         from psycho.llm.base import Message
 
+        from psycho.config.constants import EXTRACTION_MAX_TOKENS
         try:
             response = await self._llm.complete(
                 messages=[Message(role="user", content=prompt)],
                 system=(
                     "You are a precise knowledge extraction engine. "
-                    "Output ONLY valid JSON. Never add explanations or markdown."
+                    "Output ONLY valid JSON. Never add explanations or markdown. "
+                    "Keep properties short — max 30 chars per value. "
+                    "Limit entities to 8 max. Output must be complete valid JSON."
                 ),
-                max_tokens=1024,
+                max_tokens=EXTRACTION_MAX_TOKENS,
                 temperature=0.1,
             )
             raw_text = response.content.strip()
@@ -218,8 +248,14 @@ class KnowledgeExtractor:
         try:
             raw = json.loads(raw_text)
         except json.JSONDecodeError as e:
-            logger.warning(f"Extraction JSON parse failed: {e} | raw: {raw_text[:200]}")
-            return ExtractionResult(source=source)
+            # Try to salvage partial JSON — truncate at the last valid array close
+            salvaged = _try_repair_json(raw_text)
+            if salvaged:
+                logger.debug("Extraction JSON repaired from truncated response")
+                raw = salvaged
+            else:
+                logger.warning(f"Extraction JSON parse failed: {e} | raw: {raw_text[:150]}")
+                return ExtractionResult(source=source)
 
         return self._parse_extraction(raw, source=source, domain=domain)
 
@@ -279,10 +315,65 @@ class KnowledgeExtractor:
                 type=NodeType.PREFERENCE,
                 label=label,
                 domain=p.get("domain", domain),
-                confidence=0.7,
+                confidence=0.75,   # Preferences get higher initial confidence
                 sources=[source],
             )
             result.preferences.append(node)
+
+        # ── User Identity (name, projects, occupation, goals) ──────
+        for item in raw.get("user_identity", []):
+            key = str(item.get("key", "")).strip().lower()
+            value = str(item.get("value", "")).strip()
+            if not key or not value or len(value) < 1:
+                continue
+
+            if key == "name":
+                # High-confidence person node for the user
+                # Preserve proper capitalization for names
+                display_name = " ".join(w.capitalize() for w in value.split())
+                node = KnowledgeNode.create(
+                    type=NodeType.PERSON,
+                    label="user",
+                    domain="general",
+                    confidence=0.95,
+                    properties={"name": display_name, "role": "user"},
+                    sources=[source],
+                )
+                node.display_label = display_name
+                result.entities.append(node)
+            elif key in ("current_project", "goal", "occupation", "location"):
+                # Preference node linking user to their project/goal
+                pref_label = f"{key}: {value.lower()}"
+                node = KnowledgeNode.create(
+                    type=NodeType.PREFERENCE,
+                    label=pref_label,
+                    domain=domain,
+                    confidence=0.8,
+                    properties={key: value},
+                    sources=[source],
+                )
+                node.display_label = f"{key.replace('_', ' ').title()}: {value}"
+                result.preferences.append(node)
+            elif key in ("language", "framework", "tool"):
+                # Technology node
+                node = KnowledgeNode.create(
+                    type=NodeType.TECHNOLOGY,
+                    label=value.lower(),
+                    domain="coding",
+                    confidence=0.75,
+                    sources=[source],
+                )
+                result.entities.append(node)
+            else:
+                # Generic preference
+                node = KnowledgeNode.create(
+                    type=NodeType.PREFERENCE,
+                    label=f"{key}: {value.lower()}",
+                    domain=domain,
+                    confidence=0.7,
+                    sources=[source],
+                )
+                result.preferences.append(node)
 
         # ── Corrections ───────────────────────────────────────────
         for c in raw.get("corrections", []):

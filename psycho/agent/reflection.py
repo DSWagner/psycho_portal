@@ -202,12 +202,19 @@ class ReflectionEngine:
             # 5. Record detected mistakes
             await self._record_mistakes(result, interactions, session_id)
 
-            # 6. Generate additional insights
+            # 6. Generate additional insights — FIX: store results in result
             if result.session_summary:
-                await self._insight_generator.generate_insights(
+                new_insights = await self._insight_generator.generate_insights(
                     session_summary=result.session_summary,
                     max_nodes=25,
                 )
+                for node in new_insights:
+                    result.insights.append({
+                        "insight": node.display_label,
+                        "basis": node.properties.get("basis", ""),
+                        "confidence": node.confidence,
+                        "actionable": node.properties.get("actionable", ""),
+                    })
 
             # 7. Graph maintenance (prune deprecated, merge near-duplicates)
             maintenance = self._evolver.run_full_maintenance()

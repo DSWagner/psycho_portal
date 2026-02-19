@@ -29,8 +29,9 @@ class AgentContext:
 
     # Context assembled before LLM call
     retrieved_memories: list[dict] = field(default_factory=list)
-    graph_context: list[Any] = field(default_factory=list)  # Phase 3: KnowledgeNode list
-    mistake_warnings: list[str] = field(default_factory=list)  # Phase 4
+    graph_context: list[Any] = field(default_factory=list)
+    mistake_warnings: list[str] = field(default_factory=list)
+    domain_context: str = ""           # Domain-specific context (tasks, health stats)
 
     # Token accounting
     input_tokens: int = 0
@@ -40,12 +41,13 @@ class AgentContext:
     started_at: float = field(default_factory=time.time)
     completed_at: float = 0.0
 
-    # Domain processing
-    domain_result: Any = None       # DomainResult from domain handler post_process
+    # Domain processing result
+    domain_result: Any = None
 
-    # Meta flags
-    is_correction: bool = False     # User corrected the agent
-    is_confirmation: bool = False   # User confirmed something
+    # Signal detection
+    signal_type: str = "none"
+    is_correction: bool = False
+    is_confirmation: bool = False
 
     def mark_complete(self) -> None:
         self.completed_at = time.time()

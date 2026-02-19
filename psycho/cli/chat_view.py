@@ -109,11 +109,8 @@ class ChatView:
             )
         )
 
-        # Greeting
-        ui.render_system_message(
-            f"Memory loaded · {stats.get('interactions', 0)} past interactions · "
-            f"Type /help for commands"
-        )
+        # Jarvis-style greeting based on what the agent knows
+        self._render_startup_greeting(stats)
         ui.render_separator()
 
         # Main loop
@@ -429,11 +426,42 @@ class ChatView:
             f"Ingestion complete: {nodes} nodes, {facts} facts, {edges} edges added to graph."
         )
 
+    def _render_startup_greeting(self, stats: dict) -> None:
+        """Jarvis-style startup greeting based on known context."""
+        from psycho.config.constants import COLOR_ACCENT, COLOR_DIM
+
+        interactions = stats.get("interactions", 0)
+        graph_nodes = stats.get("graph_nodes", 0)
+        pending_tasks = stats.get("pending_tasks", 0)
+        mistakes = stats.get("total_mistakes", 0)
+
+        # Build a contextual greeting
+        if interactions == 0:
+            ui.render_system_message(
+                "First session. I'll start building my knowledge of you from this conversation. "
+                "Tell me your name and what you're working on."
+            )
+        else:
+            parts = [f"{interactions} interactions across sessions"]
+            if graph_nodes > 0:
+                parts.append(f"{graph_nodes} nodes in knowledge graph")
+            if pending_tasks > 0:
+                parts.append(f"[yellow]{pending_tasks} pending tasks[/yellow]")
+            if mistakes > 0:
+                parts.append(f"{mistakes} mistakes recorded (won't repeat them)")
+
+            ui.render_system_message(
+                "Memory loaded · " + " · ".join(parts)
+            )
+            ui.render_system_message("Type /help for commands", style="grey50")
+
     async def _handle_exit(self) -> None:
         ui.render_separator()
         ui.render_system_message("Running post-session reflection and saving…")
 
-        # Run reflection (this is the self-evolution step)
+        # FIX: Get stats BEFORE stopping (DB will be closed after stop)
+        stats = await self._agent.get_stats()
+
         from psycho.config import get_settings
         settings = get_settings()
         run_reflect = settings.reflection_enabled and self._turn_count > 0
@@ -441,7 +469,6 @@ class ChatView:
         with self._console.status("[dim]Reflecting on this session…[/dim]", spinner="dots"):
             reflection_result = await self._agent.stop(run_reflection=run_reflect)
 
-        stats = await self._agent.get_stats() if hasattr(self._agent, '_started') else {}
         ui.render_exit_summary(stats)
 
         # Show reflection summary if it ran

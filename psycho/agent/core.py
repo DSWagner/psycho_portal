@@ -172,8 +172,8 @@ class PsychoAgent:
         async for token in self._loop.stream_process(user_message):
             yield token
 
-    async def reflect(self) -> "ReflectionEngine":
-        """Run post-session reflection. Returns the result."""
+    async def reflect(self):
+        """Run post-session reflection. Returns ReflectionResult or None."""
         if not self._started:
             return None
         return await self._reflection.run(

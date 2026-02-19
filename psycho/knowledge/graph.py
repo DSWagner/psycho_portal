@@ -69,6 +69,9 @@ class KnowledgeGraph:
         for nid, nd in data.get("nodes", {}).items():
             try:
                 node = KnowledgeNode.from_dict(nd)
+                # FIX: ensure display_label is always set (old saves may miss it)
+                if not node.display_label:
+                    node.display_label = node.label
                 self._g.add_node(node.id, data=node)
                 loaded_nodes += 1
             except Exception as e:
@@ -85,8 +88,8 @@ class KnowledgeGraph:
                 logger.warning(f"Skipping malformed edge: {e}")
 
         logger.info(f"Knowledge graph loaded: {loaded_nodes} nodes, {loaded_edges} edges")
-        if loaded_nodes > 0:
-            self._recompute_pagerank()
+        # FIX: always recompute PageRank after load, even for small graphs
+        self._recompute_pagerank()
 
     def save(self) -> None:
         """Persist graph to disk."""

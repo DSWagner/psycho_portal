@@ -69,12 +69,34 @@ class GraphEvolver:
 
         # ── 1. Add/update entities ─────────────────────────────────
         for node in result.entities:
+            # Special handling: PERSON "user" node — merge name into existing
+            if node.type.value == "person" and node.label == "user":
+                existing = g.find_node_by_label("user", node.type)
+                if existing:
+                    # Merge name and properties into existing user node
+                    existing.update_confidence(0.05)
+                    for k, v in node.properties.items():
+                        existing.properties[k] = v
+                    if node.display_label and node.display_label != "user":
+                        existing.display_label = node.display_label
+                    label_to_id[node.label] = existing.id
+                    stats["nodes_updated"] += 1
+                else:
+                    canonical_id = g.upsert_node(node)
+                    label_to_id[node.label] = canonical_id
+                    stats["nodes_added"] += 1
+                continue
+
             existing = g.find_node_by_label(node.label, node.type)
             if existing:
                 existing.update_confidence(CONFIDENCE_CONSISTENT)
                 for src in node.sources:
                     if src not in existing.sources:
                         existing.sources.append(src)
+                # Merge any new properties
+                for k, v in node.properties.items():
+                    if k not in existing.properties:
+                        existing.properties[k] = v
                 label_to_id[node.label] = existing.id
                 stats["nodes_updated"] += 1
             else:

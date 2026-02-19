@@ -20,11 +20,12 @@ async def chat(req: ChatRequest, request: Request):
 
     loop = getattr(agent, '_loop', None)
     domain_result = getattr(loop, '_last_domain_result', None)
+    domain = getattr(loop, '_last_domain', "general")   # FIX: use _last_domain not _session_id
     actions = domain_result.actions_taken if domain_result else []
 
     return ChatResponse(
         response=response,
-        domain=getattr(agent._loop, '_session_id', "general"),
+        domain=domain,
         session_id=agent.session_id,
         actions_taken=actions,
     )
@@ -82,7 +83,6 @@ async def ws_chat_handler(websocket: WebSocket, agent):
                 await websocket.send_json({"type": "error", "message": "Empty message"})
                 continue
 
-            # Stream tokens
             full_response = []
             try:
                 async for token in agent.stream_chat(message):
@@ -92,11 +92,10 @@ async def ws_chat_handler(websocket: WebSocket, agent):
                 await websocket.send_json({"type": "error", "message": str(e)})
                 continue
 
-            # Get domain result for actions
             loop = getattr(agent, '_loop', None)
             domain_result = getattr(loop, '_last_domain_result', None)
             actions = domain_result.actions_taken if domain_result else []
-            domain = getattr(loop, '_last_domain', "general") if loop else "general"
+            domain = getattr(loop, '_last_domain', "general")   # FIX: _last_domain not _session_id
 
             await websocket.send_json({
                 "type": "done",

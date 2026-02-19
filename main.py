@@ -16,6 +16,12 @@ from pathlib import Path
 # Ensure project root is in path when running as script
 sys.path.insert(0, str(Path(__file__).parent))
 
+# Load .env FIRST with override=True so .env values win over system env vars.
+# This means if you update .env, it always takes effect regardless of what
+# environment variables the OS or shell has set.
+from dotenv import load_dotenv as _load_dotenv
+_load_dotenv(dotenv_path=Path(__file__).parent / ".env", override=True)
+
 # Windows: force UTF-8 so Rich/Unicode block chars render correctly
 if sys.platform == "win32":
     try:
