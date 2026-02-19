@@ -1,4 +1,4 @@
-"""AgentLoop — the perceive → think → act → learn cycle with knowledge graph."""
+"""AgentLoop — perceive → think → act → learn, with full self-evolution wiring."""
 
 from __future__ import annotations
 
@@ -14,6 +14,11 @@ from psycho.config.constants import (
     MAX_CONTEXT_MEMORIES,
     SYSTEM_PROMPT_BASE,
 )
+from psycho.learning.signal_detector import (
+    SignalType,
+    detect_signal,
+    extract_correction_target,
+)
 from psycho.llm.base import LLMProvider, Message
 
 from .context import AgentContext
@@ -23,20 +28,24 @@ if TYPE_CHECKING:
     from psycho.knowledge.extractor import KnowledgeExtractor
     from psycho.knowledge.graph import KnowledgeGraph
     from psycho.knowledge.reasoner import GraphReasoner
+    from psycho.learning.mistake_tracker import MistakeTracker
     from psycho.memory import MemoryManager
 
 
 class AgentLoop:
     """
-    Core interaction cycle — fully wired with the knowledge graph.
+    Full interaction cycle with all self-evolution features active.
 
     Per-interaction pipeline:
-      1. Semantic memory retrieval (past conversations)
-      2. Knowledge graph context retrieval (structured knowledge)
-      3. System prompt assembly (base + memories + graph context)
-      4. LLM call
-      5. Response delivery
-      6. Background: 4-tier memory write + async knowledge extraction
+      1.  Signal detection (is user correcting or confirming?)
+      2.  Real-time confidence update on detected signal
+      3.  Parallel retrieval: semantic memory + mistake warnings
+      4.  Knowledge graph context (synchronous, in-process)
+      5.  System prompt assembly
+      6.  LLM call
+      7.  Response delivery
+      8.  Memory write (4 tiers, awaited)
+      9.  Background: knowledge extraction + graph evolution
     """
 
     def __init__(
@@ -48,6 +57,7 @@ class AgentLoop:
         evolver: "GraphEvolver",
         extractor: "KnowledgeExtractor",
         reasoner: "GraphReasoner",
+        mistake_tracker: "MistakeTracker",
     ) -> None:
         self._session_id = session_id
         self._llm = llm
@@ -56,30 +66,46 @@ class AgentLoop:
         self._evolver = evolver
         self._extractor = extractor
         self._reasoner = reasoner
+        self._mistake_tracker = mistake_tracker
 
     async def process(self, user_message: str) -> str:
-        """Full pipeline for a single user message. Returns agent's response."""
+        """Full pipeline for a single user message."""
         ctx = AgentContext(
             session_id=self._session_id,
             interaction_id=str(uuid.uuid4()),
             user_message=user_message,
         )
 
-        # 1. Parallel retrieval: semantic memories + graph context
-        semantic_task = asyncio.create_task(
+        # 1. Detect correction/confirmation signal
+        signal = detect_signal(user_message)
+        if signal.type == SignalType.CORRECTION:
+            ctx.is_correction = True
+            await self._handle_correction_signal(user_message, signal)
+        elif signal.type == SignalType.CONFIRMATION:
+            ctx.is_confirmation = True
+            await self._handle_confirmation_signal()
+
+        # 2. Parallel: semantic memory + mistake warnings
+        memory_task = asyncio.create_task(
             self._memory.retrieve_context(query=user_message)
         )
-        # Graph context is synchronous (in-process NetworkX) — run directly
+        warnings_task = asyncio.create_task(
+            self._mistake_tracker.get_warnings_for_prompt(user_message)
+        )
+        ctx.retrieved_memories, mistake_warnings = await asyncio.gather(
+            memory_task, warnings_task
+        )
+
+        # 3. Graph context (synchronous)
         graph_context_str = self._reasoner.get_context_for_prompt(user_message)
-
-        ctx.retrieved_memories = await semantic_task
         ctx.graph_context = [graph_context_str] if graph_context_str else []
+        ctx.mistake_warnings = mistake_warnings
 
-        # 2. Build system prompt
+        # 4. Build system prompt
         system_prompt = self._build_system_prompt(ctx)
         messages = self._build_messages(ctx)
 
-        # 3. LLM call
+        # 5. LLM call
         try:
             response = await self._llm.complete(
                 messages=messages,
@@ -98,7 +124,7 @@ class AgentLoop:
 
         ctx.mark_complete()
 
-        # 4. Memory write (awaited — must complete before next interaction)
+        # 6. Memory write (awaited)
         await self._memory.add_interaction(
             session_id=self._session_id,
             user_message=user_message,
@@ -107,70 +133,118 @@ class AgentLoop:
             tokens_used=ctx.total_tokens,
         )
 
-        # 5. Background knowledge extraction (non-blocking — user doesn't wait)
+        # 7. Background extraction + graph evolution
         asyncio.create_task(
             self._extract_and_evolve(
                 user_message=user_message,
                 agent_response=ctx.agent_response,
                 domain=ctx.domain,
+                is_correction=ctx.is_correction,
             )
         )
 
         logger.debug(
-            f"Interaction: {ctx.total_tokens} tokens, {ctx.latency_ms:.0f}ms, "
+            f"Interaction: {ctx.total_tokens} tokens, {ctx.latency_ms:.0f}ms | "
+            f"signal={signal.type.value} | "
             f"graph={self._graph.get_stats()['active_nodes']} nodes"
         )
         return ctx.agent_response
 
-    # ── System prompt assembly ────────────────────────────────────
+    # ── System prompt assembly ─────────────────────────────────────
 
     def _build_system_prompt(self, ctx: AgentContext) -> str:
-        """Assemble the full system prompt with all context layers."""
         parts = [SYSTEM_PROMPT_BASE.format(name=AGENT_NAME)]
 
-        # Temporal awareness
+        # Datetime
         now = datetime.now().strftime("%A, %B %d %Y at %H:%M")
         parts.append(f"\nCurrent date and time: {now}")
 
-        # Knowledge graph context (structured knowledge)
+        # Knowledge graph
         if ctx.graph_context:
             parts.extend(ctx.graph_context)
 
-        # Semantic memory (relevant past conversations)
+        # Mistake warnings (highest priority — show before other context)
+        if ctx.mistake_warnings:
+            parts.append(
+                self._mistake_tracker.build_warning_block(ctx.mistake_warnings)
+            )
+
+        # Semantic memory
         if ctx.retrieved_memories:
             parts.append("\n─── RELEVANT PAST INTERACTIONS ───")
             for mem in ctx.retrieved_memories[:MAX_CONTEXT_MEMORIES]:
                 relevance = mem.get("relevance", 0)
-                rel_tag = "HIGH" if relevance > 0.7 else "MEDIUM" if relevance > 0.5 else "LOW"
+                tag = "HIGH" if relevance > 0.7 else "MEDIUM" if relevance > 0.5 else "LOW"
                 parts.append(
-                    f"[{rel_tag}] User: {mem['user_message'][:200]}\n"
+                    f"[{tag}] User: {mem['user_message'][:200]}\n"
                     f"         You:  {mem['agent_response'][:300]}"
                 )
             parts.append("──────────────────────────────────")
             parts.append(
-                "Weave the above knowledge and memories naturally into your responses. "
-                "Reference them as genuine memory, not as a list."
+                "Weave the above knowledge and memories naturally. "
+                "Reference them as genuine memory."
+            )
+
+        # Correction acknowledgment
+        if ctx.is_correction:
+            parts.append(
+                "\nNOTE: The user appears to be correcting something. "
+                "Acknowledge the correction explicitly, thank them, "
+                "and provide the correct information."
             )
 
         return "\n".join(parts)
 
     def _build_messages(self, ctx: AgentContext) -> list[Message]:
-        """Build message list: short-term history + current message."""
         messages = self._memory.short_term.get_messages()
         messages.append(Message(role="user", content=ctx.user_message))
         return messages
 
-    # ── Background extraction ─────────────────────────────────────
+    # ── Signal handlers ────────────────────────────────────────────
+
+    async def _handle_correction_signal(
+        self, user_message: str, signal
+    ) -> None:
+        """Immediately drop confidence on recently discussed topics."""
+        # Get the most recent assistant turn to identify what was corrected
+        recent_turns = self._memory.short_term.get_turns()
+        if not recent_turns:
+            return
+
+        last_agent_response = recent_turns[-1].assistant if recent_turns else ""
+        correction_hint = extract_correction_target(user_message, last_agent_response)
+
+        if correction_hint:
+            # Try to find the node being corrected
+            node = self._graph.find_node_by_label(correction_hint.lower()[:50])
+            if node:
+                self._evolver.correct_node(node.id, f"User correction: {correction_hint[:100]}")
+                logger.info(f"Real-time correction: '{node.display_label}' confidence reduced")
+
+    async def _handle_confirmation_signal(self) -> None:
+        """Boost confidence on the most recently discussed graph topics."""
+        recent_turns = self._memory.short_term.get_turns()
+        if not recent_turns:
+            return
+
+        last_user = recent_turns[-1].user if recent_turns else ""
+        # Get nodes that were relevant to the last exchange
+        context_items = self._graph.get_context_for_query(last_user, top_k=3)
+        node_ids = [node.id for node, _ in context_items]
+        if node_ids:
+            self._evolver.confirm_nodes(node_ids)
+            logger.debug(f"Real-time confirmation: boosted {len(node_ids)} nodes")
+
+    # ── Background extraction ──────────────────────────────────────
 
     async def _extract_and_evolve(
-        self, user_message: str, agent_response: str, domain: str
+        self,
+        user_message: str,
+        agent_response: str,
+        domain: str,
+        is_correction: bool = False,
     ) -> None:
-        """
-        Background task: extract knowledge from the interaction and evolve the graph.
-
-        This runs AFTER the response is returned to the user.
-        Any errors here are logged but don't affect the user experience.
-        """
+        """Background: extract knowledge and evolve the graph."""
         try:
             extraction = await self._extractor.extract_from_interaction(
                 user_message=user_message,
@@ -180,12 +254,20 @@ class AgentLoop:
             )
             if not extraction.is_empty():
                 stats = await self._evolver.integrate(extraction)
+
+                # If it was a correction and the extraction found it, record the mistake
+                if is_correction and extraction.corrections:
+                    for corr in extraction.corrections:
+                        await self._mistake_tracker.record_mistake(
+                            session_id=self._session_id,
+                            user_input=user_message[:400],
+                            agent_response=corr.get("wrong", "")[:400],
+                            correction=corr.get("correct", "")[:300],
+                            domain=domain,
+                        )
+
                 if stats["nodes_added"] > 0 or stats["facts_added"] > 0:
                     self._graph.save()
-                    logger.debug(
-                        f"Graph evolved: +{stats['nodes_added']} nodes, "
-                        f"+{stats['facts_added']} facts, "
-                        f"+{stats['corrections_applied']} corrections"
-                    )
+
         except Exception as e:
             logger.warning(f"Background extraction failed (non-critical): {e}")

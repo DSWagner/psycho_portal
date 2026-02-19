@@ -50,6 +50,8 @@ COMMANDS = {
     "/graph":         "Inspect the knowledge graph",
     "/facts":         "List stored facts",
     "/ingest <path>": "Ingest a file or folder into the knowledge graph",
+    "/reflect":       "Run post-session reflection now (learn from this session)",
+    "/mistakes":      "Show recorded past mistakes",
     "/clear":         "Clear the screen",
     "/exit":          "Exit the chat (also: quit, exit, bye)",
 }
@@ -193,6 +195,14 @@ class ChatView:
                 await self._handle_ingest(parts[1].strip())
             return True
 
+        if cmd_lower == "/reflect":
+            await self._handle_reflect()
+            return True
+
+        if cmd_lower == "/mistakes":
+            await self._show_mistakes()
+            return True
+
         ui.render_system_message(
             f"Unknown command: {cmd}. Type /help for available commands.",
             style="yellow",
@@ -285,6 +295,43 @@ class ChatView:
             )
         self._console.print(table)
 
+    async def _handle_reflect(self) -> None:
+        if self._turn_count == 0:
+            ui.render_system_message("No interactions yet to reflect on.", style="yellow")
+            return
+        ui.render_system_message("Running reflection on current session…")
+        with self._console.status("[dim]Synthesizing learnings…[/dim]", spinner="dots"):
+            result = await self._agent.reflect()
+        if result:
+            self._render_reflection_summary(result)
+        else:
+            ui.render_system_message("Reflection complete.")
+
+    async def _show_mistakes(self) -> None:
+        mistakes = await self._agent.mistake_tracker.get_all_mistakes(limit=15)
+        if not mistakes:
+            ui.render_system_message("No mistakes recorded yet.")
+            return
+        from rich.table import Table
+        from rich import box
+        table = Table(
+            title="Recorded Mistakes",
+            box=box.SIMPLE_HEAVY,
+            border_style="grey35",
+        )
+        table.add_column("Domain", style="dim", width=10)
+        table.add_column("Question", width=35)
+        table.add_column("Was wrong", width=30)
+        table.add_column("Correct", width=35)
+        for m in mistakes[:12]:
+            table.add_row(
+                m.get("domain", "—"),
+                m.get("user_input", "")[:35],
+                m.get("agent_response", "")[:30],
+                m.get("correction", "")[:35],
+            )
+        self._console.print(table)
+
     async def _handle_ingest(self, path: str) -> None:
         import os
         if not os.path.exists(path):
@@ -307,7 +354,49 @@ class ChatView:
 
     async def _handle_exit(self) -> None:
         ui.render_separator()
-        ui.render_system_message("Saving session and shutting down...")
-        stats = await self._agent.get_stats()
-        await self._agent.stop()
+        ui.render_system_message("Running post-session reflection and saving…")
+
+        # Run reflection (this is the self-evolution step)
+        from psycho.config import get_settings
+        settings = get_settings()
+        run_reflect = settings.reflection_enabled and self._turn_count > 0
+
+        with self._console.status("[dim]Reflecting on this session…[/dim]", spinner="dots"):
+            reflection_result = await self._agent.stop(run_reflection=run_reflect)
+
+        stats = await self._agent.get_stats() if hasattr(self._agent, '_started') else {}
         ui.render_exit_summary(stats)
+
+        # Show reflection summary if it ran
+        if reflection_result and reflection_result.is_meaningful():
+            self._render_reflection_summary(reflection_result)
+
+    def _render_reflection_summary(self, result) -> None:
+        """Render the reflection results after session end."""
+        from rich import box
+        from rich.table import Table
+
+        quality = result.quality_score
+        q_style = "green" if quality > 0.75 else "yellow" if quality > 0.5 else "red"
+        from psycho.knowledge.schema import confidence_bar
+
+        self._console.print(
+            f"\n[magenta]Session Reflection[/magenta]  "
+            f"[{q_style}]{confidence_bar(quality, 8)} {quality:.2f}[/{q_style}]"
+        )
+
+        if result.key_learnings:
+            self._console.print(f"  [dim]Learnings:[/dim] {len(result.key_learnings)} new facts integrated")
+        if result.corrections_detected:
+            self._console.print(f"  [dim]Corrections:[/dim] {len(result.corrections_detected)} mistakes recorded")
+        if result.insights:
+            self._console.print(f"  [dim]Insights:[/dim] {len(result.insights)} derived")
+        if result.graph_changes:
+            added = result.graph_changes.get("nodes_added", 0) + result.graph_changes.get("facts_added", 0)
+            if added:
+                self._console.print(f"  [dim]Graph:[/dim] +{added} nodes/facts")
+        if result.session_summary:
+            self._console.print(
+                f"\n  [dim]{result.session_summary[:200]}[/dim]"
+            )
+        self._console.print("")

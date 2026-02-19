@@ -171,6 +171,8 @@ def render_exit_summary(stats: dict) -> None:
     table.add_row("Graph edges", str(stats.get("graph_edges", 0)))
     if stats.get("graph_avg_confidence"):
         table.add_row("Avg confidence", f"{stats['graph_avg_confidence']:.2f}")
+    if stats.get("total_mistakes", 0) > 0:
+        table.add_row("Mistakes recorded", str(stats.get("total_mistakes", 0)))
     table.add_row("Model", stats.get("model", "—"))
 
     console.print(table)

@@ -230,6 +230,52 @@ def ingest(path: str, domain: str | None, text: bool) -> None:
 
 
 @cli.command()
+def reflect() -> None:
+    """Run post-session reflection on the most recent session data."""
+    from psycho.agent import PsychoAgent
+    from psycho.knowledge.schema import confidence_bar
+
+    async def _run():
+        agent = PsychoAgent()
+        await agent.start()
+        recent = await agent.memory.get_recent_history(limit=1)
+        if not recent:
+            console.print("[dim]No interactions found to reflect on.[/dim]")
+            await agent.stop()
+            return
+
+        console.print("[dim]Running reflection…[/dim]")
+        with console.status("[dim]Synthesizing…[/dim]", spinner="dots"):
+            result = await agent.reflect()
+
+        if result and result.is_meaningful():
+            q = result.quality_score
+            q_style = "green" if q > 0.75 else "yellow" if q > 0.5 else "red"
+            console.print(f"\n[magenta]Reflection Complete[/magenta]  "
+                          f"[{q_style}]{confidence_bar(q, 8)} {q:.2f}[/{q_style}]\n")
+            if result.session_summary:
+                console.print(Panel(result.session_summary, title="Summary", border_style="grey35"))
+            if result.key_learnings:
+                console.print(f"  Learnings: [bold]{len(result.key_learnings)}[/bold] new facts")
+            if result.corrections_detected:
+                console.print(f"  Corrections: [bold]{len(result.corrections_detected)}[/bold] recorded")
+            if result.insights:
+                console.print(f"  Insights: [bold]{len(result.insights)}[/bold] derived")
+            gc = result.graph_changes
+            console.print(
+                f"  Graph: +{gc.get('nodes_added',0)+gc.get('facts_added',0)} nodes/facts, "
+                f"merged {gc.get('merged',0)}, pruned {gc.get('pruned',0)}"
+            )
+            console.print(f"\n  [dim]Journal saved to data/journals/[/dim]")
+        else:
+            console.print("[dim]Reflection complete — nothing significant to report.[/dim]")
+
+        await agent.stop(run_reflection=False)
+
+    asyncio.run(_run())
+
+
+@cli.command()
 @click.option("--host", default="0.0.0.0", help="Bind host")
 @click.option("--port", default=8000, help="Bind port")
 def serve(host: str, port: int) -> None:

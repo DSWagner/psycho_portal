@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import time
 import uuid
+from pathlib import Path
 
 from loguru import logger
 
@@ -13,6 +15,9 @@ from psycho.knowledge.extractor import KnowledgeExtractor
 from psycho.knowledge.graph import KnowledgeGraph
 from psycho.knowledge.ingestion import IngestionPipeline
 from psycho.knowledge.reasoner import GraphReasoner
+from psycho.learning.insight_generator import InsightGenerator
+from psycho.learning.mistake_tracker import MistakeTracker
+from psycho.learning.session_journal import SessionJournal
 from psycho.llm import create_provider
 from psycho.llm.base import LLMProvider
 from psycho.memory import MemoryManager
@@ -21,28 +26,27 @@ from psycho.storage.graph_store import GraphStore
 from psycho.storage.vector_store import VectorStore
 
 from .loop import AgentLoop
+from .reflection import ReflectionEngine
 
 
 class PsychoAgent:
     """
-    Top-level agent class — owns and coordinates all subsystems.
+    Top-level agent class — the full self-evolving system.
 
     Subsystems:
         LLM provider         — Anthropic Claude or Ollama (local)
         Memory manager       — 4-tier: short-term, long-term, semantic, episodic
         Knowledge graph      — NetworkX + ChromaDB, self-evolving
         Graph evolver        — confidence updates, dedup, maintenance
-        Graph extractor      — LLM-powered entity/relation extraction
+        Knowledge extractor  — LLM-powered entity/relation extraction
         Graph reasoner       — context retrieval for prompt injection
         Ingestion pipeline   — file/text ingestion into the graph
+        Mistake tracker      — learns from errors, warns before repeating
+        Signal detector      — detects corrections/confirmations in messages
+        Insight generator    — derives insights from graph + session patterns
+        Session journal      — writes learning record after each session
+        Reflection engine    — post-session synthesis (the self-evolution core)
         Agent loop           — perceive → think → act → learn cycle
-
-    Usage:
-        agent = PsychoAgent()
-        await agent.start()
-        response = await agent.chat("Hello!")
-        await agent.ingest_file("notes.pdf")
-        await agent.stop()
     """
 
     def __init__(self) -> None:
@@ -62,30 +66,34 @@ class PsychoAgent:
         self._extractor: KnowledgeExtractor | None = None
         self._reasoner: GraphReasoner | None = None
         self._ingestion: IngestionPipeline | None = None
+        self._mistake_tracker: MistakeTracker | None = None
+        self._insight_generator: InsightGenerator | None = None
+        self._journal: SessionJournal | None = None
+        self._reflection: ReflectionEngine | None = None
         self._loop: AgentLoop | None = None
 
         self._session_id = str(uuid.uuid4())[:8]
+        self._session_started_at = time.time()
         self._started = False
 
     async def start(self) -> None:
-        """Initialize all subsystems. Call before first chat()."""
+        """Initialize all subsystems."""
         if self._started:
             return
 
-        # 1. Database
+        # Storage
         await self._db.connect()
 
-        # 2. LLM provider
+        # LLM
         self._llm = create_provider()
 
-        # 3. Memory (4 tiers)
+        # Memory (4 tiers)
         self._memory = MemoryManager(self._db, self._vector_store)
         await self._memory.initialize()
 
-        # 4. Knowledge graph subsystem
+        # Knowledge graph
         self._graph = KnowledgeGraph(self._graph_store, self._vector_store)
         self._graph.load()
-
         self._evolver = GraphEvolver(self._graph)
         self._extractor = KnowledgeExtractor(self._llm)
         self._reasoner = GraphReasoner(self._graph)
@@ -96,10 +104,27 @@ class PsychoAgent:
             memory=self._memory,
         )
 
-        # 5. Session tracking
+        # Learning subsystems
+        self._mistake_tracker = MistakeTracker(self._db, self._vector_store)
+        self._insight_generator = InsightGenerator(self._llm, self._graph)
+        self._journal = SessionJournal(self._settings.journal_path)
+
+        # Reflection engine
+        self._reflection = ReflectionEngine(
+            llm=self._llm,
+            memory=self._memory,
+            graph=self._graph,
+            evolver=self._evolver,
+            mistake_tracker=self._mistake_tracker,
+            insight_generator=self._insight_generator,
+            journal=self._journal,
+            reasoner=self._reasoner,
+        )
+
+        # Session tracking
         await self._memory.long_term.create_session(self._session_id)
 
-        # 6. Agent loop
+        # Agent loop (fully wired)
         self._loop = AgentLoop(
             session_id=self._session_id,
             llm=self._llm,
@@ -108,52 +133,55 @@ class PsychoAgent:
             evolver=self._evolver,
             extractor=self._extractor,
             reasoner=self._reasoner,
+            mistake_tracker=self._mistake_tracker,
         )
 
         self._started = True
-        graph_stats = self._graph.get_stats()
+        g_stats = self._graph.get_stats()
         logger.info(
             f"{AGENT_NAME} started | session={self._session_id} | "
             f"provider={self._llm.provider_name} | model={self._llm.model_name} | "
-            f"graph={graph_stats['active_nodes']} nodes"
+            f"graph={g_stats['active_nodes']} nodes, {g_stats['total_edges']} edges"
         )
 
     async def chat(self, user_message: str) -> str:
-        """Process a user message and return the agent's response."""
         if not self._started:
             await self.start()
         return await self._loop.process(user_message)
 
+    async def reflect(self) -> "ReflectionEngine":
+        """Run post-session reflection. Returns the result."""
+        if not self._started:
+            return None
+        return await self._reflection.run(
+            session_id=self._session_id,
+            session_started_at=self._session_started_at,
+        )
+
     async def ingest_file(self, path: str) -> dict:
-        """Ingest a file or folder into the knowledge graph."""
         if not self._started:
             await self.start()
-        from pathlib import Path
         p = Path(path)
         if p.is_dir():
             results = await self._ingestion.ingest_folder(p)
-            total_nodes = sum(r.nodes_added for r in results)
-            total_facts = sum(r.facts_added for r in results)
             return {
                 "files_processed": len(results),
-                "nodes_added": total_nodes,
-                "facts_added": total_facts,
+                "nodes_added": sum(r.nodes_added for r in results),
+                "facts_added": sum(r.facts_added for r in results),
                 "errors": [e for r in results for e in r.errors],
             }
-        else:
-            result = await self._ingestion.ingest_file(p)
-            return {
-                "nodes_added": result.nodes_added,
-                "facts_added": result.facts_added,
-                "edges_added": result.edges_added,
-                "chunks": result.chunks_processed,
-                "errors": result.errors,
-            }
+        result = await self._ingestion.ingest_file(p)
+        return {
+            "nodes_added": result.nodes_added,
+            "facts_added": result.facts_added,
+            "edges_added": result.edges_added,
+            "chunks": result.chunks_processed,
+            "errors": result.errors,
+        }
 
     async def ingest_text(
         self, text: str, source_name: str = "manual", domain: str = "general"
     ) -> dict:
-        """Ingest raw text into the knowledge graph."""
         if not self._started:
             await self.start()
         result = await self._ingestion.ingest_text(text, source_name, domain)
@@ -163,28 +191,41 @@ class PsychoAgent:
             "chunks": result.chunks_processed,
         }
 
-    async def stop(self) -> None:
-        """Graceful shutdown: save graph, close connections."""
+    async def stop(self, run_reflection: bool = False) -> dict | None:
+        """Graceful shutdown. Optionally run post-session reflection."""
         if not self._started:
-            return
+            return None
+
+        reflection_result = None
+        if run_reflection and self._reflection:
+            reflection_result = await self._reflection.run(
+                session_id=self._session_id,
+                session_started_at=self._session_started_at,
+            )
+        else:
+            # Always save graph on exit even without reflection
+            if self._graph:
+                self._graph.save()
 
         if self._memory:
             await self._memory.long_term.end_session(self._session_id)
-
-        if self._graph:
-            self._graph.save()
 
         if self._db:
             await self._db.close()
 
         self._started = False
         logger.info(f"{AGENT_NAME} stopped | session={self._session_id}")
+        return reflection_result
 
     # ── Accessors ─────────────────────────────────────────────────
 
     @property
     def session_id(self) -> str:
         return self._session_id
+
+    @property
+    def session_started_at(self) -> float:
+        return self._session_started_at
 
     @property
     def llm(self) -> LLMProvider:
@@ -203,6 +244,10 @@ class PsychoAgent:
         return self._reasoner
 
     @property
+    def mistake_tracker(self) -> MistakeTracker:
+        return self._mistake_tracker
+
+    @property
     def settings(self):
         return self._settings
 
@@ -214,8 +259,11 @@ class PsychoAgent:
         stats["model"] = self._llm.model_name if self._llm else "unknown"
         stats["provider"] = self._llm.provider_name if self._llm else "unknown"
         if self._graph:
-            graph_stats = self._graph.get_stats()
-            stats["graph_nodes"] = graph_stats["active_nodes"]
-            stats["graph_edges"] = graph_stats["total_edges"]
-            stats["graph_avg_confidence"] = graph_stats["average_confidence"]
+            g = self._graph.get_stats()
+            stats["graph_nodes"] = g["active_nodes"]
+            stats["graph_edges"] = g["total_edges"]
+            stats["graph_avg_confidence"] = g["average_confidence"]
+        if self._mistake_tracker:
+            m = await self._mistake_tracker.get_stats()
+            stats["total_mistakes"] = m["total_mistakes"]
         return stats
