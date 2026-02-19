@@ -21,6 +21,41 @@ def cli() -> None:
 
 
 @cli.command()
+@click.option("--yes", is_flag=True, help="Skip confirmation prompt")
+def reset(yes: bool) -> None:
+    """
+    Wipe all memory and start fresh as a newborn agent.
+
+    Deletes: knowledge graph, conversation history, ChromaDB vectors,
+    session journals, health metrics, tasks. Config (.env) is kept.
+    """
+    import shutil
+    from psycho.config import get_settings
+    settings = get_settings()
+
+    data_dir = settings.data_dir
+    if not data_dir.exists():
+        console.print("[dim]Nothing to reset — data directory doesn't exist.[/dim]")
+        return
+
+    if not yes:
+        console.print(f"[yellow]This will permanently delete ALL memory in:[/yellow] {data_dir.resolve()}")
+        console.print("[yellow]  • Knowledge graph (all nodes + edges)[/yellow]")
+        console.print("[yellow]  • Conversation history (all sessions)[/yellow]")
+        console.print("[yellow]  • Semantic vectors (ChromaDB)[/yellow]")
+        console.print("[yellow]  • Session journals[/yellow]")
+        console.print("[yellow]  • Health metrics + tasks[/yellow]")
+        confirm = click.confirm("\nAre you sure you want to reset to a clean slate?", default=False)
+        if not confirm:
+            console.print("[dim]Reset cancelled.[/dim]")
+            return
+
+    shutil.rmtree(data_dir, ignore_errors=True)
+    console.print(f"[green]Reset complete.[/green] PsychoPortal will start fresh on next launch.")
+    console.print("[dim]Your .env config is untouched.[/dim]")
+
+
+@cli.command()
 def chat() -> None:
     """Start an interactive chat session with the dashboard UI."""
     from psycho.agent import PsychoAgent

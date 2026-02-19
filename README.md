@@ -245,6 +245,15 @@ python main.py reflect
 
 Manually triggers the reflection engine on your most recent session data.
 
+### Reset (start fresh)
+
+```bash
+python main.py reset        # Asks for confirmation
+python main.py reset --yes  # Wipes everything immediately
+```
+
+Deletes all memory: knowledge graph, conversation history, vectors, journals, health and tasks data. Your `.env` config is untouched. The agent starts as a blank slate on next launch.
+
 ---
 
 ## In-Chat Commands
