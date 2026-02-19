@@ -15,6 +15,9 @@ from psycho.knowledge.extractor import KnowledgeExtractor
 from psycho.knowledge.graph import KnowledgeGraph
 from psycho.knowledge.ingestion import IngestionPipeline
 from psycho.knowledge.reasoner import GraphReasoner
+from psycho.domains import (
+    CodingHandler, DomainRouter, GeneralHandler, HealthHandler, TaskHandler
+)
 from psycho.learning.insight_generator import InsightGenerator
 from psycho.learning.mistake_tracker import MistakeTracker
 from psycho.learning.session_journal import SessionJournal
@@ -70,6 +73,8 @@ class PsychoAgent:
         self._insight_generator: InsightGenerator | None = None
         self._journal: SessionJournal | None = None
         self._reflection: ReflectionEngine | None = None
+        self._domain_router: DomainRouter | None = None
+        self._domain_handlers: dict = {}
         self._loop: AgentLoop | None = None
 
         self._session_id = str(uuid.uuid4())[:8]
@@ -121,10 +126,19 @@ class PsychoAgent:
             reasoner=self._reasoner,
         )
 
+        # Domain intelligence
+        self._domain_router = DomainRouter(self._llm)
+        self._domain_handlers = {
+            "coding":  CodingHandler(self._db, self._llm),
+            "health":  HealthHandler(self._db, self._llm),
+            "tasks":   TaskHandler(self._db, self._llm),
+            "general": GeneralHandler(self._db, self._llm),
+        }
+
         # Session tracking
         await self._memory.long_term.create_session(self._session_id)
 
-        # Agent loop (fully wired)
+        # Agent loop (fully wired with all subsystems)
         self._loop = AgentLoop(
             session_id=self._session_id,
             llm=self._llm,
@@ -134,6 +148,8 @@ class PsychoAgent:
             extractor=self._extractor,
             reasoner=self._reasoner,
             mistake_tracker=self._mistake_tracker,
+            domain_router=self._domain_router,
+            domain_handlers=self._domain_handlers,
         )
 
         self._started = True
@@ -251,6 +267,16 @@ class PsychoAgent:
     def settings(self):
         return self._settings
 
+    @property
+    def task_manager(self):
+        h = self._domain_handlers.get("tasks")
+        return h.manager if h else None
+
+    @property
+    def health_tracker(self):
+        h = self._domain_handlers.get("health")
+        return h._tracker if h else None
+
     async def get_stats(self) -> dict:
         if not self._memory:
             return {}
@@ -266,4 +292,10 @@ class PsychoAgent:
         if self._mistake_tracker:
             m = await self._mistake_tracker.get_stats()
             stats["total_mistakes"] = m["total_mistakes"]
+        if self.task_manager:
+            t = await self.task_manager.get_stats()
+            stats["pending_tasks"] = t["pending_tasks"]
+        if self.health_tracker:
+            h = await self.health_tracker.get_stats()
+            stats["health_entries"] = h["total_entries"]
         return stats

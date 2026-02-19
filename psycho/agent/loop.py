@@ -24,6 +24,8 @@ from psycho.llm.base import LLMProvider, Message
 from .context import AgentContext
 
 if TYPE_CHECKING:
+    from psycho.domains.base import DomainHandler, DomainResult
+    from psycho.domains.router import DomainRouter
     from psycho.knowledge.evolution import GraphEvolver
     from psycho.knowledge.extractor import KnowledgeExtractor
     from psycho.knowledge.graph import KnowledgeGraph
@@ -58,6 +60,8 @@ class AgentLoop:
         extractor: "KnowledgeExtractor",
         reasoner: "GraphReasoner",
         mistake_tracker: "MistakeTracker",
+        domain_router: "DomainRouter | None" = None,
+        domain_handlers: "dict[str, DomainHandler] | None" = None,
     ) -> None:
         self._session_id = session_id
         self._llm = llm
@@ -67,6 +71,9 @@ class AgentLoop:
         self._extractor = extractor
         self._reasoner = reasoner
         self._mistake_tracker = mistake_tracker
+        self._domain_router = domain_router
+        self._domain_handlers = domain_handlers or {}
+        self._last_domain_result = None
 
     async def process(self, user_message: str) -> str:
         """Full pipeline for a single user message."""
@@ -75,6 +82,10 @@ class AgentLoop:
             interaction_id=str(uuid.uuid4()),
             user_message=user_message,
         )
+
+        # 0. Domain classification (fast — keyword-first, LLM fallback)
+        if self._domain_router:
+            ctx.domain = await self._domain_router.classify(user_message)
 
         # 1. Detect correction/confirmation signal
         signal = detect_signal(user_message)
@@ -101,8 +112,10 @@ class AgentLoop:
         ctx.graph_context = [graph_context_str] if graph_context_str else []
         ctx.mistake_warnings = mistake_warnings
 
-        # 4. Build system prompt
-        system_prompt = self._build_system_prompt(ctx)
+        # 4. Build system prompt (with domain addendum + pending tasks/health context)
+        domain_addendum = self._get_domain_addendum(ctx)
+        domain_context = await self._get_domain_context(ctx)
+        system_prompt = self._build_system_prompt(ctx, domain_addendum, domain_context)
         messages = self._build_messages(ctx)
 
         # 5. LLM call
@@ -124,7 +137,11 @@ class AgentLoop:
 
         ctx.mark_complete()
 
-        # 6. Memory write (awaited)
+        # 6. Domain post-processing (extract structured data, run code, log metrics)
+        domain_result = await self._run_domain_handler(ctx)
+        self._last_domain_result = domain_result
+
+        # 7. Memory write (awaited)
         await self._memory.add_interaction(
             session_id=self._session_id,
             user_message=user_message,
@@ -145,19 +162,55 @@ class AgentLoop:
 
         logger.debug(
             f"Interaction: {ctx.total_tokens} tokens, {ctx.latency_ms:.0f}ms | "
-            f"signal={signal.type.value} | "
+            f"domain={ctx.domain} | signal={signal.type.value} | "
             f"graph={self._graph.get_stats()['active_nodes']} nodes"
         )
+
+        # Attach domain result to response for CLI rendering
+        ctx.domain_result = domain_result
         return ctx.agent_response
 
     # ── System prompt assembly ─────────────────────────────────────
 
-    def _build_system_prompt(self, ctx: AgentContext) -> str:
+    def _get_domain_addendum(self, ctx: AgentContext) -> str:
+        handler = self._domain_handlers.get(ctx.domain)
+        return handler.system_addendum(ctx) if handler else ""
+
+    async def _get_domain_context(self, ctx: AgentContext) -> str:
+        """Get domain-specific context (pending tasks, recent health metrics)."""
+        handler = self._domain_handlers.get(ctx.domain)
+        if handler and hasattr(handler, "get_context_for_prompt"):
+            try:
+                return await handler.get_context_for_prompt(ctx.session_id)
+            except Exception:
+                pass
+        return ""
+
+    async def _run_domain_handler(self, ctx: AgentContext):
+        """Post-process response with domain handler."""
+        handler = self._domain_handlers.get(ctx.domain)
+        if handler:
+            try:
+                return await handler.post_process(ctx, ctx.agent_response)
+            except Exception as e:
+                logger.warning(f"Domain handler post_process failed: {e}")
+        return None
+
+    def _build_system_prompt(self, ctx: AgentContext, domain_addendum: str = "", domain_context: str = "") -> str:
         parts = [SYSTEM_PROMPT_BASE.format(name=AGENT_NAME)]
 
         # Datetime
         now = datetime.now().strftime("%A, %B %d %Y at %H:%M")
         parts.append(f"\nCurrent date and time: {now}")
+        parts.append(f"Active domain: {ctx.domain}")
+
+        # Domain-specific instructions
+        if domain_addendum:
+            parts.append(domain_addendum)
+
+        # Domain-specific context (tasks, health metrics)
+        if domain_context:
+            parts.append(domain_context)
 
         # Knowledge graph
         if ctx.graph_context:

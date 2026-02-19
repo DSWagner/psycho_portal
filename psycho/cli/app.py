@@ -230,6 +230,111 @@ def ingest(path: str, domain: str | None, text: bool) -> None:
 
 
 @cli.command()
+@click.option("--all", "show_all", is_flag=True, help="Show completed tasks too")
+@click.option("--add", default=None, help="Add a new task (title)")
+@click.option("--done", default=None, help="Mark task as done by ID prefix")
+@click.option("--priority", default="normal", type=click.Choice(["urgent","high","normal","low"]))
+def tasks(show_all: bool, add: str | None, done: str | None, priority: str) -> None:
+    """Manage your task list."""
+    from psycho.agent import PsychoAgent
+
+    async def _run():
+        agent = PsychoAgent()
+        await agent.start()
+        tm = agent.task_manager
+
+        if add:
+            task_id = await tm.create_task(title=add, priority=priority)
+            console.print(f"[green]Task created:[/green] {add} [{priority}] `{task_id[:8]}`")
+        elif done:
+            # Find matching task
+            tasks_list = await tm.get_pending(limit=50)
+            matched = [t for t in tasks_list if t["id"].startswith(done) or done.lower() in t["title"].lower()]
+            if matched:
+                await tm.complete_task(matched[0]["id"])
+                console.print(f"[green]Completed:[/green] {matched[0]['title']}")
+            else:
+                console.print(f"[yellow]No pending task matching '{done}'[/yellow]")
+        else:
+            status = "completed" if show_all else "pending"
+            task_list = await tm.get_all(status=status, limit=50) if show_all else await tm.get_pending(limit=50)
+
+            if not task_list:
+                console.print("[dim]No tasks found.[/dim]")
+            else:
+                table = Table(title=f"Tasks ({len(task_list)})", box=box.SIMPLE_HEAVY, border_style="grey35")
+                table.add_column("ID", style="dim", width=10)
+                table.add_column("Priority", width=8)
+                table.add_column("Title", width=50)
+                table.add_column("Due", width=12)
+                table.add_column("Status", width=10)
+
+                priority_colors = {"urgent": "red", "high": "yellow", "normal": "white", "low": "dim"}
+                for t in task_list:
+                    p_color = priority_colors.get(t["priority"], "white")
+                    status_color = "green" if t["status"] == "completed" else "white"
+                    table.add_row(
+                        t["id"][:8],
+                        f"[{p_color}]{t['priority']}[/{p_color}]",
+                        t["title"][:50],
+                        t.get("due_date") or "—",
+                        f"[{status_color}]{t['status']}[/{status_color}]",
+                    )
+                console.print(table)
+
+        await agent.stop(run_reflection=False)
+
+    asyncio.run(_run())
+
+
+@cli.command()
+@click.option("--days", default=30, help="Days to look back")
+@click.option("--metric", default=None, help="Show specific metric type")
+def health(days: int, metric: str | None) -> None:
+    """View logged health metrics."""
+    from psycho.agent import PsychoAgent
+
+    async def _run():
+        agent = PsychoAgent()
+        await agent.start()
+        ht = agent.health_tracker
+
+        summary = await ht.get_summary(days=days)
+        if not summary:
+            console.print("[dim]No health metrics logged yet.[/dim]")
+            console.print("[dim]They're auto-logged when you mention them in chat.[/dim]")
+            await agent.stop(run_reflection=False)
+            return
+
+        table = Table(
+            title=f"Health Metrics (last {days} days)",
+            box=box.SIMPLE_HEAVY, border_style="grey35",
+        )
+        table.add_column("Metric", style="bold")
+        table.add_column("Avg", justify="right")
+        table.add_column("Min", justify="right")
+        table.add_column("Max", justify="right")
+        table.add_column("Unit")
+        table.add_column("Entries", justify="right")
+
+        for m_type, s in summary.items():
+            if metric and metric.lower() not in m_type.lower():
+                continue
+            table.add_row(
+                m_type.replace("_", " ").title(),
+                str(s["avg"]),
+                str(s["min"]),
+                str(s["max"]),
+                s["unit"],
+                str(s["count"]),
+            )
+        console.print(table)
+        await agent.stop(run_reflection=False)
+
+    asyncio.run(_run())
+
+
+@cli.command()
 def reflect() -> None:
     """Run post-session reflection on the most recent session data."""
     from psycho.agent import PsychoAgent

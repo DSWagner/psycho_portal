@@ -58,6 +58,8 @@ def render_stats_panel(stats: dict) -> Panel:
     if stats.get("graph_nodes", 0) > 0:
         table.add_row("graph nodes", str(stats.get("graph_nodes", 0)))
         table.add_row("graph edges", str(stats.get("graph_edges", 0)))
+    if stats.get("pending_tasks", 0) > 0:
+        table.add_row("tasks pending", str(stats.get("pending_tasks", 0)))
 
     return Panel(
         table,
@@ -173,6 +175,10 @@ def render_exit_summary(stats: dict) -> None:
         table.add_row("Avg confidence", f"{stats['graph_avg_confidence']:.2f}")
     if stats.get("total_mistakes", 0) > 0:
         table.add_row("Mistakes recorded", str(stats.get("total_mistakes", 0)))
+    if stats.get("pending_tasks", 0) > 0:
+        table.add_row("Pending tasks", str(stats.get("pending_tasks", 0)))
+    if stats.get("health_entries", 0) > 0:
+        table.add_row("Health entries", str(stats.get("health_entries", 0)))
     table.add_row("Model", stats.get("model", "—"))
 
     console.print(table)

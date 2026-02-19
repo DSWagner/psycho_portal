@@ -48,9 +48,11 @@ COMMANDS = {
     "/help":          "Show available commands",
     "/stats":         "Show memory and knowledge graph statistics",
     "/graph":         "Inspect the knowledge graph",
+    "/tasks":         "Show pending tasks",
+    "/health":        "Show logged health metrics",
     "/facts":         "List stored facts",
     "/ingest <path>": "Ingest a file or folder into the knowledge graph",
-    "/reflect":       "Run post-session reflection now (learn from this session)",
+    "/reflect":       "Run post-session reflection now",
     "/mistakes":      "Show recorded past mistakes",
     "/clear":         "Clear the screen",
     "/exit":          "Exit the chat (also: quit, exit, bye)",
@@ -154,7 +156,21 @@ class ChatView:
         latency_ms = (time.time() - start) * 1000
         self._turn_count += 1
 
+        # Get domain result for extras (code execution, metric logs, etc.)
+        domain_result = None
+        if self._agent._loop and self._agent._loop._domain_handlers:
+            # Retrieve last ctx from loop (we stored domain_result on ctx)
+            pass  # domain_result comes through the response for now
+
         ui.render_agent_message(response, latency_ms=latency_ms)
+
+        # Show domain-specific extras (execution results, logged data)
+        loop = getattr(self._agent, '_loop', None)
+        if loop and hasattr(loop, '_last_domain_result'):
+            dr = loop._last_domain_result
+            if dr and dr.display_extras:
+                for extra in dr.display_extras:
+                    self._console.print(extra)
 
     async def _handle_command(self, cmd: str) -> bool:
         """Handle slash commands. Returns True if command was recognized."""
@@ -193,6 +209,14 @@ class ChatView:
                 ui.render_system_message("Usage: /ingest <file_path_or_folder>", style="yellow")
             else:
                 await self._handle_ingest(parts[1].strip())
+            return True
+
+        if cmd_lower == "/tasks":
+            await self._show_tasks()
+            return True
+
+        if cmd_lower == "/health":
+            await self._show_health()
             return True
 
         if cmd_lower == "/reflect":
@@ -292,6 +316,59 @@ class ChatView:
                 node.display_label[:35],
                 node.domain,
                 f"[{conf_style}]{confidence_bar(node.confidence, 8)} {node.confidence:.2f}[/{conf_style}]",
+            )
+        self._console.print(table)
+
+    async def _show_tasks(self) -> None:
+        tm = self._agent.task_manager
+        if not tm:
+            ui.render_system_message("Task manager not available.")
+            return
+        tasks = await tm.get_pending(limit=20)
+        if not tasks:
+            ui.render_system_message("No pending tasks. Tell me what you need to do!")
+            return
+        from rich.table import Table
+        from rich import box
+        table = Table(box=box.SIMPLE_HEAVY, border_style="grey35", title=f"Pending Tasks ({len(tasks)})")
+        table.add_column("ID", style="dim", width=10)
+        table.add_column("Priority", width=8)
+        table.add_column("Task", width=55)
+        table.add_column("Due", width=12)
+        priority_colors = {"urgent": "red", "high": "yellow", "normal": "white", "low": "dim"}
+        for t in tasks:
+            p_color = priority_colors.get(t["priority"], "white")
+            table.add_row(
+                t["id"][:8],
+                f"[{p_color}]{t['priority']}[/{p_color}]",
+                t["title"][:55],
+                t.get("due_date") or "—",
+            )
+        self._console.print(table)
+
+    async def _show_health(self) -> None:
+        ht = self._agent.health_tracker
+        if not ht:
+            ui.render_system_message("Health tracker not available.")
+            return
+        summary = await ht.get_summary(days=30)
+        if not summary:
+            ui.render_system_message("No health metrics logged yet. Mention your weight, sleep, calories etc. in chat!")
+            return
+        from rich.table import Table
+        from rich import box
+        table = Table(box=box.SIMPLE_HEAVY, border_style="grey35", title="Health Metrics (30 days)")
+        table.add_column("Metric")
+        table.add_column("Avg", justify="right")
+        table.add_column("Min", justify="right")
+        table.add_column("Max", justify="right")
+        table.add_column("Unit")
+        table.add_column("Entries", justify="right", style="dim")
+        for m_type, s in summary.items():
+            table.add_row(
+                m_type.replace("_", " ").title(),
+                str(s["avg"]), str(s["min"]), str(s["max"]),
+                s["unit"], str(s["count"]),
             )
         self._console.print(table)
 

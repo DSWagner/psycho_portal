@@ -40,6 +40,9 @@ class AgentContext:
     started_at: float = field(default_factory=time.time)
     completed_at: float = 0.0
 
+    # Domain processing
+    domain_result: Any = None       # DomainResult from domain handler post_process
+
     # Meta flags
     is_correction: bool = False     # User corrected the agent
     is_confirmation: bool = False   # User confirmed something

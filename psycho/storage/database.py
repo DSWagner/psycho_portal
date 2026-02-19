@@ -70,9 +70,37 @@ CREATE TABLE IF NOT EXISTS preferences (
     domain      TEXT    DEFAULT 'general',
     updated_at  REAL    NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS health_metrics (
+    id          TEXT    PRIMARY KEY,
+    metric_type TEXT    NOT NULL,
+    value       REAL    NOT NULL,
+    unit        TEXT    NOT NULL,
+    notes       TEXT    DEFAULT '',
+    timestamp   REAL    NOT NULL,
+    session_id  TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_health_type ON health_metrics(metric_type, timestamp);
+
+CREATE TABLE IF NOT EXISTS tasks (
+    id          TEXT    PRIMARY KEY,
+    title       TEXT    NOT NULL,
+    description TEXT    DEFAULT '',
+    priority    TEXT    DEFAULT 'normal',
+    status      TEXT    DEFAULT 'pending',
+    due_date    TEXT,
+    tags        TEXT    DEFAULT '[]',
+    created_at  REAL    NOT NULL,
+    updated_at  REAL    NOT NULL,
+    completed_at REAL,
+    session_id  TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status, priority);
 """
 
-CURRENT_VERSION = 1
+CURRENT_VERSION = 2
 
 
 class Database:
