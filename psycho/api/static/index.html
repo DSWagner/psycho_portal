@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PsychoPortal</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    :root {
+      --bg: #0d1117; --surface: #161b22; --border: #30363d;
+      --text: #e6edf3; --muted: #8b949e; --accent: #c678dd;
+      --green: #3fb950; --yellow: #d29922; --red: #f85149;
+      --blue: #58a6ff; --orange: #f0883e;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* ── Header ── */
+    #header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 10px 20px; display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+    #logo { font-size: 1.2rem; font-weight: 700; color: var(--accent); letter-spacing: 1px; }
+    #status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+    .badge { background: var(--border); color: var(--muted); font-size: 0.72rem; padding: 2px 8px; border-radius: 12px; }
+    .badge.domain { background: #1e3a2f; color: var(--green); }
+    #header-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+
+    /* ── Layout ── */
+    #main { display: flex; flex: 1; overflow: hidden; }
+    #chat-panel { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    #sidebar { width: 300px; background: var(--surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+
+    /* ── Chat area ── */
+    #messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+    #messages::-webkit-scrollbar { width: 6px; }
+    #messages::-webkit-scrollbar-track { background: transparent; }
+    #messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    .msg { max-width: 90%; }
+    .msg.user { align-self: flex-end; }
+    .msg.agent { align-self: flex-start; }
+    .msg-label { font-size: 0.7rem; color: var(--muted); margin-bottom: 4px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; }
+    .msg.user .msg-label { text-align: right; }
+    .msg-bubble { padding: 12px 16px; border-radius: 12px; line-height: 1.6; font-size: 0.92rem; }
+    .msg.user .msg-bubble { background: #1c2b3a; border: 1px solid #2d4a6e; color: var(--blue); }
+    .msg.agent .msg-bubble { background: var(--surface); border: 1px solid var(--border); }
+    .msg-bubble pre { margin: 8px 0; border-radius: 8px; overflow-x: auto; }
+    .msg-bubble code:not(pre code) { background: #1a1f26; padding: 1px 5px; border-radius: 4px; font-size: 0.85em; color: var(--orange); }
+    .msg-bubble p { margin-bottom: 8px; }
+    .msg-bubble p:last-child { margin-bottom: 0; }
+    .msg-bubble ul, .msg-bubble ol { padding-left: 20px; margin-bottom: 8px; }
+    .msg-bubble h1,.msg-bubble h2,.msg-bubble h3 { color: var(--accent); margin: 10px 0 6px; }
+    .msg-bubble a { color: var(--blue); }
+    .msg-bubble table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+    .msg-bubble th,.msg-bubble td { border: 1px solid var(--border); padding: 6px 12px; text-align: left; }
+    .msg-bubble th { background: var(--bg); color: var(--accent); }
+
+    .action-pill { display: inline-block; background: #1e3a2f; color: var(--green); font-size: 0.72rem; padding: 2px 8px; border-radius: 10px; margin: 2px; }
+
+    .thinking { color: var(--muted); font-style: italic; font-size: 0.85rem; }
+    .cursor { display: inline-block; width: 2px; height: 14px; background: var(--accent); animation: blink 0.8s infinite; vertical-align: middle; margin-left: 2px; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+    /* ── Input area ── */
+    #input-area { background: var(--surface); border-top: 1px solid var(--border); padding: 12px 16px; display: flex; gap: 10px; align-items: flex-end; }
+    #msg-input { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; color: var(--text); padding: 10px 14px; font-size: 0.92rem; font-family: inherit; resize: none; max-height: 120px; line-height: 1.5; transition: border-color .2s; }
+    #msg-input:focus { outline: none; border-color: var(--accent); }
+    #msg-input::placeholder { color: var(--muted); }
+    #send-btn { background: var(--accent); color: #fff; border: none; border-radius: 10px; padding: 10px 18px; font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: opacity .2s; white-space: nowrap; }
+    #send-btn:hover { opacity: .85; }
+    #send-btn:disabled { opacity: .4; cursor: default; }
+
+    /* ── Sidebar ── */
+    .sidebar-section { border-bottom: 1px solid var(--border); }
+    .sidebar-header { padding: 10px 14px; font-size: 0.72rem; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 1px; cursor: pointer; display: flex; justify-content: space-between; user-select: none; }
+    .sidebar-content { padding: 8px 14px 12px; }
+    .stat-row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 0.82rem; }
+    .stat-label { color: var(--muted); }
+    .stat-value { font-weight: 600; }
+
+    .task-item { padding: 6px 0; border-bottom: 1px solid #1c2128; font-size: 0.82rem; }
+    .task-item:last-child { border: none; }
+    .task-priority { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; padding: 1px 5px; border-radius: 8px; margin-right: 6px; }
+    .priority-urgent { background: #3d1a1a; color: var(--red); }
+    .priority-high { background: #3d2e0a; color: var(--yellow); }
+    .priority-normal { background: #1c2128; color: var(--muted); }
+    .priority-low { background: #111; color: #555; }
+
+    /* ── Graph viz ── */
+    #graph-svg { width: 100%; height: 180px; background: var(--bg); }
+    .graph-node { cursor: pointer; }
+    .node-concept { fill: #4c8ed4; }
+    .node-entity  { fill: #58a6ff; }
+    .node-preference { fill: #3fb950; }
+    .node-fact    { fill: #d29922; }
+    .node-technology { fill: #79c0ff; }
+    .node-mistake { fill: #f85149; }
+    .node-person  { fill: #e8b428; }
+    .node-question { fill: var(--muted); }
+    .node-file    { fill: #c678dd; }
+    .node-skill   { fill: #56d364; }
+    .node-topic   { fill: #b083f0; }
+    .node-event   { fill: #f08080; }
+    .graph-link { stroke: var(--border); stroke-opacity: 0.5; }
+    .graph-label { fill: var(--muted); font-size: 8px; pointer-events: none; }
+
+    .empty-state { color: var(--muted); font-size: 0.82rem; text-align: center; padding: 16px 0; }
+
+    /* ── Ingest panel ── */
+    #ingest-area { display: flex; gap: 6px; }
+    #ingest-input { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 6px 10px; font-size: 0.8rem; font-family: inherit; }
+    #ingest-btn { background: #1e3a2f; color: var(--green); border: 1px solid #2d5a3f; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 0.8rem; }
+    #ingest-btn:hover { background: #2d4a3f; }
+
+    /* ── Toast ── */
+    #toast { position: fixed; bottom: 24px; right: 24px; background: #1c3a2f; border: 1px solid var(--green); color: var(--green); padding: 10px 18px; border-radius: 10px; font-size: 0.85rem; opacity: 0; transition: opacity .3s; pointer-events: none; z-index: 100; }
+    #toast.show { opacity: 1; }
+
+    @media (max-width: 700px) {
+      #sidebar { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="header">
+  <div id="status-dot"></div>
+  <div id="logo">PSYCHO PORTAL</div>
+  <span class="badge" id="model-badge">connecting…</span>
+  <span class="badge domain" id="domain-badge">general</span>
+  <div id="header-right">
+    <span class="badge" id="session-badge">—</span>
+  </div>
+</div>
+
+<div id="main">
+  <!-- ── Chat panel ── -->
+  <div id="chat-panel">
+    <div id="messages">
+      <div class="msg agent">
+        <div class="msg-label">PsychoPortal</div>
+        <div class="msg-bubble">
+          <p>Hello! I'm <strong>PsychoPortal</strong> — your self-evolving AI assistant.</p>
+          <p>I build a persistent knowledge graph from our conversations, remember everything across sessions, and get smarter every time we talk.</p>
+          <p style="color:var(--muted);font-size:.85rem">Try asking me anything, share files with <code>/ingest path</code> in the CLI, or just start chatting!</p>
+        </div>
+      </div>
+    </div>
+    <div id="input-area">
+      <textarea id="msg-input" rows="1" placeholder="Type a message… (Enter to send, Shift+Enter for newline)"></textarea>
+      <button id="send-btn">Send</button>
+    </div>
+  </div>
+
+  <!-- ── Sidebar ── -->
+  <div id="sidebar">
+    <!-- Stats -->
+    <div class="sidebar-section">
+      <div class="sidebar-header" onclick="toggleSection('stats-body')">STATS <span>▾</span></div>
+      <div class="sidebar-content" id="stats-body">
+        <div class="stat-row"><span class="stat-label">Sessions</span><span class="stat-value" id="s-sessions">—</span></div>
+        <div class="stat-row"><span class="stat-label">Messages</span><span class="stat-value" id="s-messages">—</span></div>
+        <div class="stat-row"><span class="stat-label">Graph nodes</span><span class="stat-value" id="s-nodes">—</span></div>
+        <div class="stat-row"><span class="stat-label">Graph edges</span><span class="stat-value" id="s-edges">—</span></div>
+        <div class="stat-row"><span class="stat-label">Avg confidence</span><span class="stat-value" id="s-conf">—</span></div>
+        <div class="stat-row"><span class="stat-label">Pending tasks</span><span class="stat-value" id="s-tasks">—</span></div>
+        <div class="stat-row"><span class="stat-label">Health entries</span><span class="stat-value" id="s-health">—</span></div>
+        <div class="stat-row"><span class="stat-label">Mistakes logged</span><span class="stat-value" id="s-mistakes">—</span></div>
+        <div class="stat-row"><span class="stat-label">Model</span><span class="stat-value" id="s-model" style="font-size:.72rem">—</span></div>
+      </div>
+    </div>
+
+    <!-- Tasks -->
+    <div class="sidebar-section">
+      <div class="sidebar-header" onclick="toggleSection('tasks-body')">TASKS <span>▾</span></div>
+      <div class="sidebar-content" id="tasks-body">
+        <div id="tasks-list"><div class="empty-state">No pending tasks</div></div>
+      </div>
+    </div>
+
+    <!-- Knowledge Graph -->
+    <div class="sidebar-section" style="flex:1;overflow:hidden;display:flex;flex-direction:column;">
+      <div class="sidebar-header" onclick="toggleSection('graph-body')">KNOWLEDGE GRAPH <span>▾</span></div>
+      <div id="graph-body" style="flex:1;overflow:hidden;">
+        <svg id="graph-svg"></svg>
+        <div class="sidebar-content" style="padding-top:4px;">
+          <div id="graph-legend" style="display:flex;flex-wrap:wrap;gap:4px;font-size:.68rem;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ingest -->
+    <div class="sidebar-section">
+      <div class="sidebar-header">INGEST TEXT</div>
+      <div class="sidebar-content">
+        <div id="ingest-area">
+          <input id="ingest-input" placeholder="Paste text to add to graph…" />
+          <button id="ingest-btn">Add</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── Config ────────────────────────────────────────────────────────────────────
+const BASE = window.location.origin;
+const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws/chat`;
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let ws = null;
+let wsReady = false;
+let currentStreamDiv = null;
+let currentStreamContent = '';
+
+// ── Markdown renderer ─────────────────────────────────────────────────────────
+marked.setOptions({ breaks: true, gfm: true });
+function renderMd(text) {
+  const html = marked.parse(text || '');
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  div.querySelectorAll('pre code').forEach(b => hljs.highlightElement(b));
+  return div.innerHTML;
+}
+
+// ── WebSocket ─────────────────────────────────────────────────────────────────
+function connect() {
+  ws = new WebSocket(WS_URL);
+  ws.onopen = () => {
+    wsReady = true;
+    document.getElementById('status-dot').style.background = 'var(--green)';
+    loadStats();
+    loadTasks();
+    loadGraph();
+  };
+  ws.onclose = () => {
+    wsReady = false;
+    document.getElementById('status-dot').style.background = 'var(--red)';
+    setTimeout(connect, 3000);
+  };
+  ws.onerror = () => ws.close();
+  ws.onmessage = e => {
+    const data = JSON.parse(e.data);
+    if (data.type === 'token') handleToken(data.token);
+    else if (data.type === 'done') handleDone(data);
+    else if (data.type === 'error') handleError(data.message);
+    else if (data.type === 'pong') {}
+  };
+}
+
+function handleToken(token) {
+  if (!currentStreamDiv) {
+    currentStreamDiv = addMessage('agent', '', true);
+  }
+  currentStreamContent += token;
+  currentStreamDiv.querySelector('.msg-bubble').innerHTML =
+    renderMd(currentStreamContent) + '<span class="cursor"></span>';
+  scrollBottom();
+}
+
+function handleDone(data) {
+  if (currentStreamDiv) {
+    currentStreamDiv.querySelector('.msg-bubble').innerHTML = renderMd(currentStreamContent);
+    if (data.actions && data.actions.length > 0) {
+      const actDiv = document.createElement('div');
+      actDiv.style.marginTop = '6px';
+      data.actions.forEach(a => {
+        const pill = document.createElement('span');
+        pill.className = 'action-pill';
+        pill.textContent = a;
+        actDiv.appendChild(pill);
+      });
+      currentStreamDiv.querySelector('.msg-bubble').appendChild(actDiv);
+    }
+    currentStreamDiv = null;
+    currentStreamContent = '';
+  }
+  if (data.domain) {
+    document.getElementById('domain-badge').textContent = data.domain;
+  }
+  document.getElementById('send-btn').disabled = false;
+  scrollBottom();
+  // Refresh sidebar
+  setTimeout(() => { loadStats(); loadTasks(); loadGraph(); }, 500);
+}
+
+function handleError(msg) {
+  if (currentStreamDiv) {
+    currentStreamDiv.querySelector('.msg-bubble').innerHTML =
+      `<span style="color:var(--red)">Error: ${escHtml(msg)}</span>`;
+    currentStreamDiv = null;
+    currentStreamContent = '';
+  }
+  document.getElementById('send-btn').disabled = false;
+  showToast('Error: ' + msg, 'red');
+}
+
+// ── Sending messages ──────────────────────────────────────────────────────────
+function sendMessage() {
+  const input = document.getElementById('msg-input');
+  const text = input.value.trim();
+  if (!text || !wsReady) return;
+  addMessage('user', text);
+  input.value = '';
+  input.style.height = 'auto';
+  document.getElementById('send-btn').disabled = true;
+  ws.send(JSON.stringify({ type: 'chat', message: text }));
+  scrollBottom();
+}
+
+document.getElementById('send-btn').addEventListener('click', sendMessage);
+document.getElementById('msg-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+document.getElementById('msg-input').addEventListener('input', function() {
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+});
+
+// ── Message rendering ─────────────────────────────────────────────────────────
+function addMessage(role, content, streaming = false) {
+  const container = document.getElementById('messages');
+  const msgDiv = document.createElement('div');
+  msgDiv.className = `msg ${role}`;
+  const labelText = role === 'user' ? 'YOU' : 'PSYCHOPORTAL';
+  msgDiv.innerHTML = `
+    <div class="msg-label">${labelText}</div>
+    <div class="msg-bubble">${streaming ? '<span class="thinking">thinking…</span>' : renderMd(content)}</div>
+  `;
+  container.appendChild(msgDiv);
+  scrollBottom();
+  return msgDiv;
+}
+
+function scrollBottom() {
+  const m = document.getElementById('messages');
+  m.scrollTop = m.scrollHeight;
+}
+
+// ── Stats ─────────────────────────────────────────────────────────────────────
+async function loadStats() {
+  try {
+    const r = await fetch(`${BASE}/api/stats`);
+    const s = await r.json();
+    document.getElementById('s-sessions').textContent = s.sessions || 0;
+    document.getElementById('s-messages').textContent = s.interactions || 0;
+    document.getElementById('s-nodes').textContent = s.graph_nodes || 0;
+    document.getElementById('s-edges').textContent = s.graph_edges || 0;
+    document.getElementById('s-conf').textContent = s.graph_avg_confidence ? s.graph_avg_confidence.toFixed(2) : '—';
+    document.getElementById('s-tasks').textContent = s.pending_tasks || 0;
+    document.getElementById('s-health').textContent = s.health_entries || 0;
+    document.getElementById('s-mistakes').textContent = s.total_mistakes || 0;
+    document.getElementById('s-model').textContent = s.model || '—';
+    document.getElementById('model-badge').textContent = s.model || '—';
+    document.getElementById('session-badge').textContent = 'session: ' + (s.session_id || '—');
+  } catch (e) {}
+}
+
+// ── Tasks ─────────────────────────────────────────────────────────────────────
+async function loadTasks() {
+  try {
+    const r = await fetch(`${BASE}/api/tasks`);
+    const d = await r.json();
+    const list = document.getElementById('tasks-list');
+    if (!d.tasks || d.tasks.length === 0) {
+      list.innerHTML = '<div class="empty-state">No pending tasks</div>';
+      return;
+    }
+    list.innerHTML = d.tasks.slice(0, 8).map(t => `
+      <div class="task-item">
+        <span class="task-priority priority-${t.priority}">${t.priority}</span>
+        ${escHtml(t.title.substring(0, 45))}
+        ${t.due_date ? `<span style="color:var(--muted);font-size:.7rem"> · ${t.due_date}</span>` : ''}
+      </div>
+    `).join('');
+  } catch (e) {}
+}
+
+// ── Knowledge graph D3 viz ─────────────────────────────────────────────────────
+let graphSimulation = null;
+
+async function loadGraph() {
+  try {
+    const r = await fetch(`${BASE}/api/graph?limit=80`);
+    const d = await r.json();
+    renderGraph(d.nodes || [], d.links || []);
+  } catch (e) {}
+}
+
+function renderGraph(nodes, links) {
+  const svg = d3.select('#graph-svg');
+  svg.selectAll('*').remove();
+  if (nodes.length === 0) return;
+
+  const el = document.getElementById('graph-svg');
+  const W = el.clientWidth || 280;
+  const H = el.clientHeight || 180;
+
+  const color = d => {
+    const map = {concept:'#4c8ed4',entity:'#58a6ff',preference:'#3fb950',fact:'#d29922',
+      technology:'#79c0ff',mistake:'#f85149',person:'#e8b428',question:'#8b949e',
+      file:'#c678dd',skill:'#56d364',topic:'#b083f0',event:'#f08080'};
+    return map[d.type] || '#8b949e';
+  };
+
+  const nodeMap = {};
+  nodes.forEach(n => nodeMap[n.id] = n);
+
+  const validLinks = links.filter(l => nodeMap[l.source] && nodeMap[l.target]);
+
+  if (graphSimulation) graphSimulation.stop();
+
+  graphSimulation = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(validLinks).id(d => d.id).distance(40))
+    .force('charge', d3.forceManyBody().strength(-40))
+    .force('center', d3.forceCenter(W / 2, H / 2))
+    .force('collision', d3.forceCollide(8));
+
+  const g = svg.append('g');
+
+  const link = g.append('g').selectAll('line').data(validLinks)
+    .join('line').attr('class', 'graph-link').attr('stroke-width', 1);
+
+  const node = g.append('g').selectAll('circle').data(nodes)
+    .join('circle')
+    .attr('class', 'graph-node')
+    .attr('r', d => 3 + d.confidence * 5)
+    .attr('fill', d => color(d))
+    .attr('opacity', 0.85)
+    .attr('title', d => d.label)
+    .call(d3.drag()
+      .on('start', (ev, d) => { if (!ev.active) graphSimulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+      .on('drag', (ev, d) => { d.fx = ev.x; d.fy = ev.y; })
+      .on('end', (ev, d) => { if (!ev.active) graphSimulation.alphaTarget(0); d.fx = null; d.fy = null; })
+    );
+
+  node.append('title').text(d => `${d.label} (${d.type}, ${d.confidence.toFixed(2)})`);
+
+  graphSimulation.on('tick', () => {
+    link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+        .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+    node.attr('cx', d => Math.max(5, Math.min(W-5, d.x)))
+        .attr('cy', d => Math.max(5, Math.min(H-5, d.y)));
+  });
+
+  // Zoom
+  svg.call(d3.zoom().scaleExtent([0.3, 3]).on('zoom', ev => g.attr('transform', ev.transform)));
+
+  // Legend
+  const types = [...new Set(nodes.map(n => n.type))].slice(0, 6);
+  const legend = document.getElementById('graph-legend');
+  legend.innerHTML = types.map(t =>
+    `<span style="color:${color({type:t})};font-size:.65rem">● ${t}</span>`
+  ).join(' ');
+}
+
+// ── Ingest ─────────────────────────────────────────────────────────────────────
+document.getElementById('ingest-btn').addEventListener('click', async () => {
+  const input = document.getElementById('ingest-input');
+  const text = input.value.trim();
+  if (!text) return;
+  try {
+    const r = await fetch(`${BASE}/api/ingest`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ text, source_name: 'web_ui', domain: 'general' }),
+    });
+    const d = await r.json();
+    input.value = '';
+    showToast(`Ingested: +${d.nodes_added} nodes, +${d.facts_added} facts`);
+    setTimeout(() => { loadStats(); loadGraph(); }, 800);
+  } catch (e) { showToast('Ingest failed', 'red'); }
+});
+
+// ── UI helpers ────────────────────────────────────────────────────────────────
+function toggleSection(id) {
+  const el = document.getElementById(id);
+  if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+
+function showToast(msg, color = 'green') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.background = color === 'red' ? '#3d1a1a' : '#1c3a2f';
+  t.style.borderColor = color === 'red' ? 'var(--red)' : 'var(--green)';
+  t.style.color = color === 'red' ? 'var(--red)' : 'var(--green)';
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+connect();
+setInterval(loadStats, 10000); // refresh stats every 10s
+</script>
+</body>
+</html>

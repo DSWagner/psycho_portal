@@ -170,6 +170,68 @@ class AgentLoop:
         ctx.domain_result = domain_result
         return ctx.agent_response
 
+    async def stream_process(self, user_message: str):
+        """
+        Streaming version of process() — yields tokens as they arrive.
+        Post-processing (memory, extraction) runs after all tokens emitted.
+        """
+        ctx = AgentContext(
+            session_id=self._session_id,
+            interaction_id=str(uuid.uuid4()),
+            user_message=user_message,
+        )
+
+        if self._domain_router:
+            ctx.domain = await self._domain_router.classify(user_message)
+
+        signal = detect_signal(user_message)
+        if signal.type == SignalType.CORRECTION:
+            ctx.is_correction = True
+
+        memory_task = asyncio.create_task(self._memory.retrieve_context(query=user_message))
+        warnings_task = asyncio.create_task(
+            self._mistake_tracker.get_warnings_for_prompt(user_message)
+        )
+        ctx.retrieved_memories, mistake_warnings = await asyncio.gather(memory_task, warnings_task)
+        ctx.graph_context = [self._reasoner.get_context_for_prompt(user_message)] if self._reasoner else []
+        ctx.mistake_warnings = mistake_warnings
+
+        domain_addendum = self._get_domain_addendum(ctx)
+        domain_context = await self._get_domain_context(ctx)
+        system_prompt = self._build_system_prompt(ctx, domain_addendum, domain_context)
+        messages = self._build_messages(ctx)
+
+        # Stream tokens
+        full_response_parts = []
+        try:
+            async for token in self._llm.stream(messages=messages, system=system_prompt):
+                full_response_parts.append(token)
+                yield token
+        except Exception as e:
+            error_msg = f"Streaming error: {e}"
+            yield error_msg
+            full_response_parts = [error_msg]
+
+        ctx.agent_response = "".join(full_response_parts)
+        ctx.mark_complete()
+        self._last_domain_result = await self._run_domain_handler(ctx)
+
+        await self._memory.add_interaction(
+            session_id=self._session_id,
+            user_message=user_message,
+            agent_response=ctx.agent_response,
+            domain=ctx.domain,
+            tokens_used=0,
+        )
+        asyncio.create_task(
+            self._extract_and_evolve(
+                user_message=user_message,
+                agent_response=ctx.agent_response,
+                domain=ctx.domain,
+                is_correction=ctx.is_correction,
+            )
+        )
+
     # ── System prompt assembly ─────────────────────────────────────
 
     def _get_domain_addendum(self, ctx: AgentContext) -> str:

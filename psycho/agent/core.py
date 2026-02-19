@@ -165,6 +165,13 @@ class PsychoAgent:
             await self.start()
         return await self._loop.process(user_message)
 
+    async def stream_chat(self, user_message: str):
+        """Yield tokens as they arrive from the LLM."""
+        if not self._started:
+            await self.start()
+        async for token in self._loop.stream_process(user_message):
+            yield token
+
     async def reflect(self) -> "ReflectionEngine":
         """Run post-session reflection. Returns the result."""
         if not self._started:
