@@ -13,6 +13,7 @@ from psycho.llm import create_provider
 from psycho.llm.base import LLMProvider
 from psycho.memory import MemoryManager
 from psycho.storage.database import Database
+from psycho.storage.vector_store import VectorStore
 
 from .loop import AgentLoop
 
@@ -39,6 +40,7 @@ class PsychoAgent:
         self._settings.ensure_data_dirs()
 
         self._db = Database(self._settings.db_path)
+        self._vector_store = VectorStore(self._settings.vector_path)
         self._llm: LLMProvider | None = None
         self._memory: MemoryManager | None = None
         self._loop: AgentLoop | None = None
@@ -57,8 +59,9 @@ class PsychoAgent:
         # LLM provider
         self._llm = create_provider()
 
-        # Memory
-        self._memory = MemoryManager(self._db)
+        # Memory (all four tiers)
+        self._memory = MemoryManager(self._db, self._vector_store)
+        await self._memory.initialize()
 
         # Session tracking
         await self._memory.long_term.create_session(self._session_id)

@@ -29,6 +29,7 @@ venv/
 env/
 .venv/
 .env/
+venv*/
 
 # Data (personal, never commit)
 data/

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import time
 import uuid
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -25,9 +27,10 @@ class AgentLoop:
     """
     The core interaction cycle.
 
-    Phase 1: perceive → retrieve keyword-matched memories → build prompt → LLM → save
-    Phase 3: adds knowledge graph context retrieval
-    Phase 4: adds mistake warnings + confidence injection
+    Phase 1: perceive → keyword memory → build prompt → LLM → save
+    Phase 2: + semantic memory retrieval (ChromaDB) + episodic logging
+    Phase 3: + knowledge graph context
+    Phase 4: + mistake warnings + confidence injection
     """
 
     def __init__(
@@ -48,10 +51,10 @@ class AgentLoop:
             user_message=user_message,
         )
 
-        # 1. Retrieve relevant context from memory
+        # 1. Retrieve semantically relevant past context
         await self._retrieve_context(ctx)
 
-        # 2. Build the full prompt
+        # 2. Build the full system prompt with injected memories
         system_prompt = self._build_system_prompt(ctx)
         messages = self._build_messages(ctx)
 
@@ -68,13 +71,13 @@ class AgentLoop:
         except Exception as e:
             logger.error(f"LLM call failed: {e}")
             ctx.agent_response = (
-                f"I encountered an error processing your message: {e}\n"
-                "Please check your API key and try again."
+                f"I encountered an error: {e}\n"
+                "Please check your API key / Ollama server and try again."
             )
 
         ctx.mark_complete()
 
-        # 4. Save to memory
+        # 4. Persist to all four memory stores
         await self._memory.add_interaction(
             session_id=self._session_id,
             user_message=user_message,
@@ -91,28 +94,42 @@ class AgentLoop:
     # ── Private helpers ───────────────────────────────────────────
 
     async def _retrieve_context(self, ctx: AgentContext) -> None:
-        """Pull relevant memories to inject into the prompt."""
+        """Pull semantically relevant memories to inject into the prompt."""
         memories = await self._memory.retrieve_context(
-            query=ctx.user_message, domain=ctx.domain
+            query=ctx.user_message, domain=None  # search all domains
         )
         ctx.retrieved_memories = memories
-        logger.debug(f"Retrieved {len(memories)} relevant memories")
+        if memories:
+            logger.debug(
+                f"Retrieved {len(memories)} semantic memories "
+                f"(top relevance: {memories[0].get('relevance', 0):.2f})"
+            )
 
     def _build_system_prompt(self, ctx: AgentContext) -> str:
         """Assemble the system prompt with injected context."""
         parts = [SYSTEM_PROMPT_BASE.format(name=AGENT_NAME)]
 
+        # Inject current datetime for temporal awareness
+        now = datetime.now().strftime("%A, %B %d %Y at %H:%M")
+        parts.append(f"\nCurrent date and time: {now}")
+
         if ctx.retrieved_memories:
             parts.append("\n─── RELEVANT MEMORIES FROM PAST SESSIONS ───")
             for mem in ctx.retrieved_memories[:MAX_CONTEXT_MEMORIES]:
+                relevance = mem.get("relevance", 0)
+                rel_label = (
+                    "HIGH" if relevance > 0.7
+                    else "MEDIUM" if relevance > 0.5
+                    else "LOW"
+                )
                 parts.append(
-                    f"[Past] User: {mem['user_message'][:200]}\n"
-                    f"       You:  {mem['agent_response'][:300]}"
+                    f"[{rel_label} relevance] User: {mem['user_message'][:200]}\n"
+                    f"                         You:  {mem['agent_response'][:300]}"
                 )
             parts.append("─────────────────────────────────────────────")
             parts.append(
-                "Reference the above past context naturally when relevant. "
-                "Don't mechanically list it — weave it into your responses."
+                "Reference the above past context naturally when relevant to the current question. "
+                "Do not mechanically list it — weave it into your responses as genuine memory."
             )
 
         return "\n".join(parts)
