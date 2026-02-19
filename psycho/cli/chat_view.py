@@ -45,11 +45,13 @@ PROMPT_TEXT = HTML('<prompt> › </prompt>')
 
 # Commands the user can type
 COMMANDS = {
-    "/help": "Show available commands",
-    "/stats": "Show memory and session statistics",
-    "/clear": "Clear the screen",
-    "/facts": "List stored facts",
-    "/exit": "Exit the chat (also: quit, exit, bye)",
+    "/help":          "Show available commands",
+    "/stats":         "Show memory and knowledge graph statistics",
+    "/graph":         "Inspect the knowledge graph",
+    "/facts":         "List stored facts",
+    "/ingest <path>": "Ingest a file or folder into the knowledge graph",
+    "/clear":         "Clear the screen",
+    "/exit":          "Exit the chat (also: quit, exit, bye)",
 }
 
 EXIT_PHRASES = {"/exit", "exit", "quit", "bye", "/quit"}
@@ -179,6 +181,18 @@ class ChatView:
             await self._show_facts()
             return True
 
+        if cmd_lower == "/graph":
+            await self._show_graph()
+            return True
+
+        if cmd_lower == "/ingest":
+            parts = cmd.split(maxsplit=1)
+            if len(parts) < 2:
+                ui.render_system_message("Usage: /ingest <file_path_or_folder>", style="yellow")
+            else:
+                await self._handle_ingest(parts[1].strip())
+            return True
+
         ui.render_system_message(
             f"Unknown command: {cmd}. Type /help for available commands.",
             style="yellow",
@@ -235,6 +249,61 @@ class ChatView:
             )
 
         self._console.print(table)
+
+    async def _show_graph(self) -> None:
+        from psycho.knowledge.schema import confidence_bar, confidence_label
+
+        g = self._agent.graph
+        stats = g.get_stats()
+        top_nodes = g.get_top_nodes(20)
+
+        from rich.table import Table
+        from rich import box
+
+        self._console.print(
+            f"\n[magenta]Knowledge Graph[/magenta] — "
+            f"{stats['active_nodes']} nodes · {stats['total_edges']} edges · "
+            f"avg confidence {stats['average_confidence']:.2f}\n"
+        )
+        if not top_nodes:
+            ui.render_system_message("Graph is empty. Chat more to build it, or use /ingest.")
+            return
+
+        table = Table(box=box.SIMPLE_HEAVY, border_style="grey35", show_header=True)
+        table.add_column("Type", style="dim", width=12)
+        table.add_column("Node", width=35)
+        table.add_column("Domain", width=12)
+        table.add_column("Confidence", width=22)
+
+        for node in top_nodes[:20]:
+            conf_style = "green" if node.confidence > 0.7 else "yellow" if node.confidence > 0.4 else "red"
+            table.add_row(
+                node.type.value,
+                node.display_label[:35],
+                node.domain,
+                f"[{conf_style}]{confidence_bar(node.confidence, 8)} {node.confidence:.2f}[/{conf_style}]",
+            )
+        self._console.print(table)
+
+    async def _handle_ingest(self, path: str) -> None:
+        import os
+        if not os.path.exists(path):
+            ui.render_error(f"Path not found: {path}")
+            return
+
+        ui.render_system_message(f"Ingesting: {path}")
+        with self._console.status("[dim]Processing…[/dim]", spinner="dots"):
+            result = await self._agent.ingest_file(path)
+
+        if result.get("errors"):
+            for err in result["errors"]:
+                ui.render_error(err)
+        nodes = result.get("nodes_added", 0)
+        facts = result.get("facts_added", 0)
+        edges = result.get("edges_added", 0)
+        ui.render_system_message(
+            f"Ingestion complete: {nodes} nodes, {facts} facts, {edges} edges added to graph."
+        )
 
     async def _handle_exit(self) -> None:
         ui.render_separator()

@@ -55,6 +55,9 @@ def render_stats_panel(stats: dict) -> Panel:
     table.add_row("messages", str(stats.get("interactions", 0)))
     table.add_row("facts", str(stats.get("facts", 0)))
     table.add_row("memory", str(stats.get("short_term_turns", 0)) + " turns")
+    if stats.get("graph_nodes", 0) > 0:
+        table.add_row("graph nodes", str(stats.get("graph_nodes", 0)))
+        table.add_row("graph edges", str(stats.get("graph_edges", 0)))
 
     return Panel(
         table,
@@ -164,6 +167,10 @@ def render_exit_summary(stats: dict) -> None:
     table.add_row("Total sessions", str(stats.get("sessions", 0)))
     table.add_row("Total messages", str(stats.get("interactions", 0)))
     table.add_row("Facts stored", str(stats.get("facts", 0)))
+    table.add_row("Graph nodes", str(stats.get("graph_nodes", 0)))
+    table.add_row("Graph edges", str(stats.get("graph_edges", 0)))
+    if stats.get("graph_avg_confidence"):
+        table.add_row("Avg confidence", f"{stats['graph_avg_confidence']:.2f}")
     table.add_row("Model", stats.get("model", "—"))
 
     console.print(table)

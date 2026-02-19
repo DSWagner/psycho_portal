@@ -16,6 +16,14 @@ from pathlib import Path
 # Ensure project root is in path when running as script
 sys.path.insert(0, str(Path(__file__).parent))
 
+# Windows: force UTF-8 so Rich/Unicode block chars render correctly
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except AttributeError:
+        pass
+
 # Configure loguru before any other imports
 from pathlib import Path as _Path
 from loguru import logger
