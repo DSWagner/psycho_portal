@@ -88,6 +88,44 @@ class AnthropicProvider(LLMProvider):
             async for text in stream.text_stream:
                 yield text
 
+    async def stream_with_image(
+        self,
+        prior_messages: list[Message],
+        image_data: bytes,
+        media_type: str,
+        user_text: str,
+        system: str = "",
+        max_tokens: int = 4096,
+    ) -> AsyncIterator[str]:
+        """Stream tokens for a vision (image + text) message."""
+        import base64
+        b64 = base64.standard_b64encode(image_data).decode("utf-8")
+
+        anthropic_messages = [
+            {"role": m.role, "content": m.content}
+            for m in prior_messages
+            if m.role in ("user", "assistant")
+        ]
+        anthropic_messages.append({
+            "role": "user",
+            "content": [
+                {
+                    "type": "image",
+                    "source": {"type": "base64", "media_type": media_type, "data": b64},
+                },
+                {"type": "text", "text": user_text or "Describe and analyse this image."},
+            ],
+        })
+
+        async with self._client.messages.stream(
+            model=self._model,
+            max_tokens=max_tokens,
+            system=system,
+            messages=anthropic_messages,
+        ) as stream:
+            async for text in stream.text_stream:
+                yield text
+
     async def complete_with_image(
         self,
         image_data: bytes,

@@ -49,6 +49,14 @@ class AgentContext:
     is_correction: bool = False
     is_confirmation: bool = False
 
+    # Web search results (injected into system prompt when triggered)
+    search_results: str = ""
+    search_query: str = ""
+
+    # Vision (image chat)
+    image_data: bytes | None = None
+    image_media_type: str = ""
+
     def mark_complete(self) -> None:
         self.completed_at = time.time()
 

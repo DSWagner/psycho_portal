@@ -149,6 +149,69 @@
     @media (max-width: 900px) { #sidebar { display: none; } }
     @media (max-width: 650px) { #history-panel { display: none; } }
 
+    /* ── Graph Explorer Overlay ── */
+    #graph-explorer {
+      display: none; position: fixed; inset: 0; z-index: 400;
+      background: var(--bg); flex-direction: column;
+    }
+    #graph-explorer.active { display: flex; }
+    #ge-topbar {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 10px 16px; display: flex; align-items: center; gap: 12px; flex-shrink: 0;
+    }
+    #ge-title { font-weight: 700; color: var(--accent); letter-spacing: 1px; }
+    #ge-stats { font-size: .75rem; color: var(--muted); }
+    #ge-close-btn { margin-left: auto; background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 5px 14px; font-size: .82rem; cursor: pointer; }
+    #ge-close-btn:hover { border-color: var(--accent); color: var(--accent); }
+    #ge-body { display: flex; flex: 1; overflow: hidden; }
+    #ge-filters {
+      width: 200px; background: var(--surface); border-right: 1px solid var(--border);
+      padding: 14px 12px; overflow-y: auto; flex-shrink: 0; display: flex; flex-direction: column; gap: 14px;
+    }
+    #ge-filters::-webkit-scrollbar { width: 4px; }
+    #ge-filters::-webkit-scrollbar-thumb { background: var(--border); }
+    .ge-filter-title { font-size: .68rem; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+    #ge-search { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 6px 9px; font-size: .8rem; font-family: inherit; }
+    #ge-search:focus { outline: none; border-color: var(--accent); }
+    #ge-conf-label { font-size: .75rem; color: var(--muted); display: flex; justify-content: space-between; }
+    #ge-conf-slider { width: 100%; accent-color: var(--accent); }
+    .ge-type-check { display: flex; align-items: center; gap: 6px; font-size: .78rem; cursor: pointer; padding: 2px 0; }
+    .ge-type-check input { accent-color: var(--accent); }
+    .ge-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+    #ge-center { flex: 1; position: relative; overflow: hidden; }
+    #ge-svg { width: 100%; height: 100%; background: #0a0d12; display: block; }
+    .ge-link { stroke: #30363d; stroke-opacity: .6; }
+    .ge-node { cursor: pointer; }
+    .ge-label { font-size: 9px; fill: rgba(230,237,243,.6); pointer-events: none; }
+    #ge-detail {
+      width: 260px; background: var(--surface); border-left: 1px solid var(--border);
+      padding: 14px 13px; overflow-y: auto; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px;
+    }
+    #ge-detail::-webkit-scrollbar { width: 4px; }
+    #ge-detail::-webkit-scrollbar-thumb { background: var(--border); }
+    .ge-detail-title { font-size: .68rem; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 1px; }
+    .ge-detail-label { font-size: 1rem; font-weight: 700; word-break: break-word; color: var(--text); }
+    .ge-kv { display: flex; gap: 6px; font-size: .78rem; }
+    .ge-key { color: var(--muted); flex-shrink: 0; min-width: 70px; }
+    .ge-val { color: var(--text); word-break: break-all; }
+    .ge-edge-item { font-size: .75rem; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); }
+    .ge-edge-dir { font-size: .65rem; color: var(--muted); }
+    #ge-delete-btn { background: rgba(248,81,73,.1); border: 1px solid rgba(248,81,73,.4); color: var(--red); border-radius: 8px; padding: 7px 14px; font-size: .82rem; cursor: pointer; transition: all .2s; }
+    #ge-delete-btn:hover { background: rgba(248,81,73,.2); }
+    .ge-empty { color: var(--muted); font-size: .82rem; text-align: center; padding: 20px 0; }
+
+    /* ── Image preview strip ── */
+    #img-preview-strip { display: none; padding: 6px 0 4px; gap: 8px; align-items: center; }
+    #img-preview-strip.show { display: flex; }
+    #img-preview-thumb { width: 52px; height: 52px; border-radius: 6px; object-fit: cover; border: 2px solid var(--accent); }
+    #img-preview-name { font-size: .78rem; color: var(--muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #img-preview-remove { background: rgba(248,81,73,.1); border: 1px solid rgba(248,81,73,.3); color: var(--red); border-radius: 6px; padding: 3px 10px; font-size: .75rem; cursor: pointer; }
+    #img-preview-remove:hover { background: rgba(248,81,73,.2); }
+    .msg-image { max-width: 220px; max-height: 160px; border-radius: 8px; margin-bottom: 6px; display: block; border: 1px solid var(--border); }
+
+    /* ── Web search badge ── */
+    .search-badge { display: inline-flex; align-items: center; gap: 4px; background: #0d2034; border: 1px solid #1a4060; color: var(--blue); font-size: .68rem; padding: 2px 8px; border-radius: 10px; margin-top: 6px; }
+
     /* ══════════════════════════════════════════════════════════════
        VOICE MODE
     ══════════════════════════════════════════════════════════════ */
@@ -255,6 +318,7 @@
   <div id="header-right">
     <span class="badge" id="session-badge">—</span>
     <button class="hdr-btn" id="toggle-history-btn" title="Toggle session history">☰ History</button>
+    <button class="hdr-btn" id="graph-explorer-btn" title="Open Knowledge Graph Explorer" style="border-color:#1a4060;color:var(--blue);">🗺 Graph</button>
     <button class="hdr-btn" id="voice-open-btn" title="Open voice mode" style="border-color:#4a3080;color:#b083f0;">🎤 Voice</button>
     <button class="hdr-btn primary" id="new-conv-btn">+ New Chat</button>
   </div>
@@ -292,10 +356,16 @@
         <div id="upload-progress"><div id="upload-fill" style="width:0%"></div></div>
         <span id="upload-status" style="white-space:nowrap">Uploading…</span>
       </div>
+      <!-- Image preview (visible when image is pasted/dropped into chat) -->
+      <div id="img-preview-strip">
+        <img id="img-preview-thumb" src="" alt="preview" />
+        <span id="img-preview-name">image</span>
+        <button id="img-preview-remove">✕ Remove</button>
+      </div>
       <div id="input-row">
         <input type="file" id="file-input" accept=".txt,.md,.rst,.py,.js,.ts,.jsx,.tsx,.go,.rs,.java,.cpp,.c,.h,.cs,.rb,.php,.swift,.kt,.sh,.json,.yaml,.yml,.toml,.csv,.xml,.pdf,.png,.jpg,.jpeg,.gif,.webp" />
-        <button id="attach-btn" title="Upload file (PDF, code, images, text…)">📎</button>
-        <textarea id="msg-input" rows="1" placeholder="Type a message… (Enter to send, Shift+Enter for newline)"></textarea>
+        <button id="attach-btn" title="Upload file (PDF, code, images, text…) or paste image with Ctrl+V">📎</button>
+        <textarea id="msg-input" rows="1" placeholder="Type a message… (Enter to send) — paste or drop an image to chat with vision"></textarea>
         <button id="send-btn">Send</button>
       </div>
     </div>
@@ -347,6 +417,43 @@
           <button id="ingest-btn">Add</button>
         </div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ GRAPH EXPLORER OVERLAY ══════════════════ -->
+<div id="graph-explorer">
+  <div id="ge-topbar">
+    <span id="ge-title">KNOWLEDGE GRAPH</span>
+    <span id="ge-stats">0 nodes · 0 edges</span>
+    <button id="ge-close-btn">✕ Close</button>
+  </div>
+  <div id="ge-body">
+    <!-- Filters panel -->
+    <div id="ge-filters">
+      <div>
+        <div class="ge-filter-title">Search</div>
+        <input id="ge-search" type="text" placeholder="Filter nodes…" />
+      </div>
+      <div>
+        <div class="ge-filter-title">Min confidence</div>
+        <div id="ge-conf-label"><span>0</span><span id="ge-conf-val">0.0</span></div>
+        <input id="ge-conf-slider" type="range" min="0" max="100" value="0" />
+      </div>
+      <div>
+        <div class="ge-filter-title">Node types</div>
+        <div id="ge-type-filters"></div>
+      </div>
+    </div>
+
+    <!-- Graph SVG -->
+    <div id="ge-center">
+      <svg id="ge-svg"></svg>
+    </div>
+
+    <!-- Detail panel -->
+    <div id="ge-detail">
+      <div class="ge-empty">Click a node to see details</div>
     </div>
   </div>
 </div>
@@ -1327,6 +1434,347 @@ window._patchWsVoice = function() {
     else if (data.type === 'error') handleError(data.message);
   };
 };
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  FEATURE D — IMAGE CHAT (paste / drop images into chat)
+// ══════════════════════════════════════════════════════════════════════════════
+
+let pendingImage = null;  // { base64: string, mediaType: string, name: string }
+
+function setPendingImage(base64, mediaType, name) {
+  pendingImage = { base64, mediaType, name };
+  const strip = document.getElementById('img-preview-strip');
+  const thumb = document.getElementById('img-preview-thumb');
+  const nameEl = document.getElementById('img-preview-name');
+  thumb.src = `data:${mediaType};base64,${base64}`;
+  nameEl.textContent = name || 'image';
+  strip.classList.add('show');
+}
+
+function clearPendingImage() {
+  pendingImage = null;
+  document.getElementById('img-preview-strip').classList.remove('show');
+  document.getElementById('img-preview-thumb').src = '';
+}
+
+document.getElementById('img-preview-remove').addEventListener('click', clearPendingImage);
+
+// Paste image from clipboard
+document.addEventListener('paste', (e) => {
+  const items = e.clipboardData && e.clipboardData.items;
+  if (!items) return;
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      e.preventDefault();
+      const file = item.getAsFile();
+      if (!file) continue;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const dataUrl = ev.target.result;
+        const [header, base64] = dataUrl.split(',');
+        const mediaType = header.match(/data:([^;]+)/)[1];
+        setPendingImage(base64, mediaType, 'pasted-image');
+      };
+      reader.readAsDataURL(file);
+      break;
+    }
+  }
+});
+
+// Drop image onto message input area
+document.getElementById('input-area').addEventListener('drop', (e) => {
+  const file = e.dataTransfer && e.dataTransfer.files[0];
+  if (!file || !file.type.startsWith('image/')) return;
+  // Only intercept image drops here (non-image drops handled by page-level handler)
+  e.stopPropagation();
+  e.preventDefault();
+  document.getElementById('drag-overlay').classList.remove('active');
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const [header, base64] = ev.target.result.split(',');
+    const mediaType = header.match(/data:([^;]+)/)[1];
+    setPendingImage(base64, mediaType, file.name);
+  };
+  reader.readAsDataURL(file);
+}, true);
+
+// Override sendMessage to handle image
+const _origSendMessage = sendMessage;
+window.sendMessage = function() {
+  if (pendingImage && wsReady) {
+    const input = document.getElementById('msg-input');
+    const text = input.value.trim() || 'Describe and analyse this image.';
+
+    if (viewingHistorySession) switchToLive();
+
+    // Render user bubble with thumbnail
+    const container = document.getElementById('messages');
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'msg user';
+    msgDiv.innerHTML = `
+      <div class="msg-label">YOU</div>
+      <div class="msg-bubble">
+        <img src="data:${pendingImage.mediaType};base64,${pendingImage.base64}" class="msg-image" alt="attached image" />
+        ${text !== 'Describe and analyse this image.' ? `<p>${escHtml(text)}</p>` : ''}
+      </div>`;
+    container.appendChild(msgDiv);
+    scrollBottom();
+
+    input.value = '';
+    input.style.height = 'auto';
+    document.getElementById('send-btn').disabled = true;
+
+    ws.send(JSON.stringify({
+      type: 'image_chat',
+      message: text,
+      image: pendingImage.base64,
+      media_type: pendingImage.mediaType,
+    }));
+
+    clearPendingImage();
+    return;
+  }
+  _origSendMessage();
+};
+
+// Re-wire send button to use our override (_origSendMessage is the old reference).
+// The keydown listener already works because it calls the global `sendMessage`
+// which now resolves to window.sendMessage (the new override) via scope-chain lookup.
+document.getElementById('send-btn').removeEventListener('click', _origSendMessage);
+document.getElementById('send-btn').addEventListener('click', window.sendMessage);
+
+// Show web search badge when agent used web search
+const _origHandleDone2 = window.handleDone;
+window.handleDone = function(data) {
+  _origHandleDone2(data);
+  if (data.search_query && currentStreamDiv === null) {
+    // Find the last agent message and append badge
+    const msgs = document.getElementById('messages').querySelectorAll('.msg.agent');
+    const last = msgs[msgs.length - 1];
+    if (last) {
+      const badge = document.createElement('div');
+      badge.className = 'search-badge';
+      badge.innerHTML = `🔍 web search: <em>${escHtml(data.search_query)}</em>`;
+      last.querySelector('.msg-bubble').appendChild(badge);
+    }
+  }
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  FEATURE A — KNOWLEDGE GRAPH EXPLORER
+// ══════════════════════════════════════════════════════════════════════════════
+
+let explorerData = { nodes: [], links: [] };
+let explorerSim  = null;
+let explorerSelectedNode = null;
+const GE_COLORS = {
+  concept:'#4c8ed4',entity:'#58a6ff',preference:'#3fb950',fact:'#d29922',
+  technology:'#79c0ff',mistake:'#f85149',person:'#e8b428',question:'#8b949e',
+  file:'#c678dd',skill:'#56d364',topic:'#b083f0',event:'#f08080',
+};
+
+function openGraphExplorer() {
+  document.getElementById('graph-explorer').classList.add('active');
+  loadExplorer();
+}
+function closeGraphExplorer() {
+  document.getElementById('graph-explorer').classList.remove('active');
+  if (explorerSim) { explorerSim.stop(); explorerSim = null; }
+}
+document.getElementById('graph-explorer-btn').addEventListener('click', openGraphExplorer);
+document.getElementById('ge-close-btn').addEventListener('click', closeGraphExplorer);
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Escape' && document.getElementById('graph-explorer').classList.contains('active')) {
+    closeGraphExplorer();
+  }
+});
+
+async function loadExplorer() {
+  try {
+    const r = await fetch(`${BASE}/api/graph?limit=500`);
+    const d = await r.json();
+    explorerData = { nodes: d.nodes || [], links: d.links || [] };
+    document.getElementById('ge-stats').textContent =
+      `${explorerData.nodes.length} nodes · ${explorerData.links.length} edges`;
+    buildTypeFilters(explorerData.nodes);
+    renderExplorer();
+  } catch (e) { showToast('Graph load failed', 'red'); }
+}
+
+function buildTypeFilters(nodes) {
+  const types = [...new Set(nodes.map(n => n.type))].sort();
+  const container = document.getElementById('ge-type-filters');
+  container.innerHTML = types.map(t => `
+    <label class="ge-type-check">
+      <input type="checkbox" class="ge-type-cb" value="${t}" checked />
+      <span class="ge-dot" style="background:${GE_COLORS[t]||'#8b949e'}"></span>
+      <span>${t}</span>
+    </label>`).join('');
+  container.querySelectorAll('.ge-type-cb').forEach(cb =>
+    cb.addEventListener('change', applyExplorerFilters)
+  );
+}
+
+function getExplorerFilters() {
+  const search   = document.getElementById('ge-search').value.toLowerCase().trim();
+  const minConf  = parseFloat(document.getElementById('ge-conf-slider').value) / 100;
+  const checkedTypes = new Set(
+    [...document.querySelectorAll('.ge-type-cb:checked')].map(cb => cb.value)
+  );
+  return { search, minConf, checkedTypes };
+}
+
+function applyExplorerFilters() {
+  renderExplorer();
+}
+
+document.getElementById('ge-search').addEventListener('input', applyExplorerFilters);
+document.getElementById('ge-conf-slider').addEventListener('input', function() {
+  document.getElementById('ge-conf-val').textContent = (this.value / 100).toFixed(2);
+  applyExplorerFilters();
+});
+
+function renderExplorer() {
+  const { search, minConf, checkedTypes } = getExplorerFilters();
+
+  const filteredNodes = explorerData.nodes.filter(n =>
+    checkedTypes.has(n.type) &&
+    n.confidence >= minConf &&
+    (!search || n.label.toLowerCase().includes(search))
+  );
+  const filteredIds = new Set(filteredNodes.map(n => n.id));
+  const filteredLinks = explorerData.links.filter(
+    l => filteredIds.has(l.source?.id || l.source) && filteredIds.has(l.target?.id || l.target)
+  );
+
+  const svg = d3.select('#ge-svg');
+  svg.selectAll('*').remove();
+
+  const el = document.getElementById('ge-svg');
+  const W = el.clientWidth || 800;
+  const H = el.clientHeight || 600;
+
+  if (filteredNodes.length === 0) {
+    svg.append('text').attr('x', W/2).attr('y', H/2)
+       .attr('text-anchor', 'middle').attr('fill', '#8b949e').attr('font-size', 14)
+       .text('No nodes match the current filters');
+    return;
+  }
+
+  // Deep-copy for simulation (avoid mutating source)
+  const simNodes = filteredNodes.map(n => ({ ...n }));
+  const nodeById  = new Map(simNodes.map(n => [n.id, n]));
+  const simLinks  = filteredLinks
+    .map(l => ({
+      source: nodeById.get(l.source?.id || l.source),
+      target: nodeById.get(l.target?.id || l.target),
+      type: l.type, confidence: l.confidence,
+    }))
+    .filter(l => l.source && l.target);
+
+  if (explorerSim) explorerSim.stop();
+  explorerSim = d3.forceSimulation(simNodes)
+    .force('link', d3.forceLink(simLinks).id(d => d.id).distance(65))
+    .force('charge', d3.forceManyBody().strength(-80))
+    .force('center', d3.forceCenter(W / 2, H / 2))
+    .force('collision', d3.forceCollide(14));
+
+  const g = svg.append('g');
+
+  // Zoom / pan
+  svg.call(d3.zoom().scaleExtent([0.1, 4]).on('zoom', ev => g.attr('transform', ev.transform)));
+
+  // Links
+  const link = g.append('g').selectAll('line').data(simLinks)
+    .join('line').attr('class', 'ge-link').attr('stroke-width', d => 0.8 + d.confidence * 1.5);
+
+  // Nodes
+  const node = g.append('g').selectAll('g').data(simNodes).join('g')
+    .attr('class', 'ge-node')
+    .call(d3.drag()
+      .on('start', (ev, d) => { if (!ev.active) explorerSim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+      .on('drag',  (ev, d) => { d.fx = ev.x; d.fy = ev.y; })
+      .on('end',   (ev, d) => { if (!ev.active) explorerSim.alphaTarget(0); d.fx = null; d.fy = null; })
+    )
+    .on('click', (ev, d) => { ev.stopPropagation(); selectExplorerNode(d.id); });
+
+  node.append('circle')
+    .attr('r', d => 5 + d.confidence * 9)
+    .attr('fill', d => GE_COLORS[d.type] || '#8b949e')
+    .attr('opacity', 0.88)
+    .attr('stroke', d => explorerSelectedNode === d.id ? '#fff' : 'none')
+    .attr('stroke-width', 2);
+
+  node.append('text').attr('class', 'ge-label')
+    .attr('dy', d => -(6 + d.confidence * 9))
+    .attr('text-anchor', 'middle')
+    .text(d => d.label.length > 22 ? d.label.substring(0, 22) + '…' : d.label);
+
+  node.append('title').text(d => `${d.label}\n${d.type} | conf: ${d.confidence.toFixed(2)}`);
+
+  svg.on('click', () => clearExplorerSelection());
+
+  explorerSim.on('tick', () => {
+    link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+        .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+    node.attr('transform', d => `translate(${d.x},${d.y})`);
+  });
+}
+
+async function selectExplorerNode(nodeId) {
+  explorerSelectedNode = nodeId;
+  const detail = document.getElementById('ge-detail');
+  detail.innerHTML = '<div class="ge-empty">Loading…</div>';
+
+  try {
+    const r = await fetch(`${BASE}/api/graph/node/${nodeId}`);
+    if (!r.ok) { detail.innerHTML = '<div class="ge-empty">Node not found</div>'; return; }
+    const n = await r.json();
+
+    const edgesHtml = n.edges.slice(0, 12).map(e => `
+      <div class="ge-edge-item">
+        <span class="ge-edge-dir">${e.direction === 'out' ? '→' : '←'} ${e.edge_type}</span>
+        <div style="color:var(--text);margin-top:2px">${escHtml(e.node_label)}</div>
+      </div>`).join('');
+
+    const propsHtml = Object.entries(n.properties || {}).slice(0, 8).map(([k, v]) => `
+      <div class="ge-kv"><span class="ge-key">${escHtml(k)}</span><span class="ge-val">${escHtml(String(v))}</span></div>`
+    ).join('');
+
+    detail.innerHTML = `
+      <div class="ge-detail-title">NODE DETAIL</div>
+      <div class="ge-detail-label">${escHtml(n.label)}</div>
+      <div class="ge-kv"><span class="ge-key">Type</span><span class="ge-val" style="color:${GE_COLORS[n.type]||'#8b949e'}">${n.type}</span></div>
+      <div class="ge-kv"><span class="ge-key">Domain</span><span class="ge-val">${n.domain}</span></div>
+      <div class="ge-kv"><span class="ge-key">Confidence</span><span class="ge-val">${n.confidence}</span></div>
+      <div class="ge-kv"><span class="ge-key">Edges</span><span class="ge-val">${n.edge_count}</span></div>
+      ${propsHtml ? `<div class="ge-detail-title" style="margin-top:4px">PROPERTIES</div>${propsHtml}` : ''}
+      ${edgesHtml ? `<div class="ge-detail-title" style="margin-top:4px">CONNECTIONS</div><div style="display:flex;flex-direction:column;gap:4px">${edgesHtml}</div>` : ''}
+      <button id="ge-delete-btn" onclick="deleteExplorerNode('${n.id}')">🗑 Delete node</button>`;
+  } catch (e) {
+    detail.innerHTML = `<div class="ge-empty">Error: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function clearExplorerSelection() {
+  explorerSelectedNode = null;
+  document.getElementById('ge-detail').innerHTML = '<div class="ge-empty">Click a node to see details</div>';
+}
+
+async function deleteExplorerNode(nodeId) {
+  if (!confirm('Delete this node from the knowledge graph?')) return;
+  try {
+    const r = await fetch(`${BASE}/api/graph/node/${nodeId}`, { method: 'DELETE' });
+    const d = await r.json();
+    if (d.success) {
+      showToast(`Deleted: ${d.deleted}`);
+      clearExplorerSelection();
+      await loadExplorer();
+    } else {
+      showToast(d.error || 'Delete failed', 'red');
+    }
+  } catch (e) { showToast('Delete error: ' + e.message, 'red'); }
+}
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 connect();

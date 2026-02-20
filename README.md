@@ -19,6 +19,9 @@ PsychoPortal is not a wrapper around an LLM. It is an autonomous learning system
 - **Ingests any file** — `.py`, `.md`, `.pdf`, `.json`, `.yaml`, `.csv`, images — all parsed and absorbed into the knowledge graph
 - **Understands images** — upload screenshots, diagrams, charts, handwritten notes, or code screenshots; Claude Vision extracts every piece of knowledge from them
 - **Voice mode** — full duplex voice conversation: speak to it, it speaks back, with an animated morphing blob that reacts to audio in real time
+- **Web search** — auto-detects queries that need live data and injects DuckDuckGo / Brave results into the agent's context before responding; indicated in the chat UI
+- **Image chat** — paste or drop any image directly into the chat input; Claude Vision analyses it inline and the knowledge is also stored in the graph
+- **Interactive graph explorer** — full-screen D3 overlay with filters, confidence slider, node search, detail panel, and one-click node deletion
 - **Tracks your health** — mentions of weight, sleep, calories, etc. are auto-logged silently
 - **Manages your tasks** — "remind me to X" creates tasks with inferred priority and due date
 - **Runs Python code** — ask "run this" and it executes safely in a sandboxed subprocess
@@ -181,8 +184,11 @@ Opens the API server at **http://localhost:8000** — visit in your browser for 
 - **Session history panel** (left sidebar) — browse and replay all past conversations
 - **New Chat button** — clears the display while preserving all memory
 - **File upload** (📎 button or drag & drop) — ingest any file directly from your browser
+- **Image chat** — paste (`Ctrl+V`) or drop an image into the chat input; preview strip shows before sending; Claude Vision replies inline
 - **Voice mode** (🎤 Voice button) — full voice call experience with animated blob
-- Live D3.js knowledge graph visualization
+- **Graph Explorer** (🗺 Graph button) — full-screen D3.js graph with type filters, confidence slider, text search, node detail panel, and delete
+- **Web search indicator** — a `🔍 web search: "query"` badge appears under the agent reply when live results were injected
+- Live mini D3.js knowledge graph in the right sidebar
 - Stats panel, task list, text ingest
 
 ### Chat (CLI Dashboard)
@@ -403,7 +409,9 @@ Interactive docs at **http://localhost:8000/docs**.
 | `POST` | `/api/upload` | Upload and ingest a file (multipart) |
 | `GET` | `/api/sessions` | List all past sessions |
 | `GET` | `/api/sessions/{id}/messages` | Get messages for a specific session |
-| `GET` | `/api/graph` | Knowledge graph (D3.js format) |
+| `GET` | `/api/graph` | Knowledge graph (D3.js format, up to 500 nodes) |
+| `GET` | `/api/graph/node/{id}` | Full node detail + edge list |
+| `DELETE` | `/api/graph/node/{id}` | Soft-delete (deprecate) a node |
 | `GET` | `/api/tasks` | List tasks |
 | `POST` | `/api/tasks` | Create task |
 | `PATCH` | `/api/tasks/{id}/complete` | Complete task |
@@ -417,15 +425,20 @@ Interactive docs at **http://localhost:8000/docs**.
 ### WebSocket Protocol
 
 ```json
-// Send:
+// Send (text chat):
 { "type": "chat", "message": "your message" }
+
+// Send (image chat — base64-encoded image):
+{ "type": "image_chat", "message": "What is this?", "image": "<base64>", "media_type": "image/jpeg" }
 
 // Receive (streaming tokens):
 { "type": "token", "token": "Hello" }
 // … repeated for each token
 
 // Final message:
-{ "type": "done", "response": "full response", "domain": "coding", "actions": ["Task created: Buy milk"] }
+{ "type": "done", "response": "full response", "domain": "coding",
+  "actions": ["Task created: Buy milk"], "search_query": "latest AI news" }
+// search_query is set only when a live web search was performed
 
 // On error:
 { "type": "error", "message": "description" }
@@ -452,6 +465,11 @@ ANTHROPIC_MODEL=claude-haiku-4-5-20251001  # cheapest; swap for sonnet/opus
 # TTS_VOICE=alloy               # alloy | echo | fable | onyx | nova | shimmer
 # ELEVENLABS_API_KEY=...        # For ElevenLabs TTS
 # ELEVENLABS_VOICE_ID=21m00Tcm4TlvDq8ikWAM  # ElevenLabs voice
+
+# ── Web Search ─────────────────────────────────────────────────────────────────
+# WEB_SEARCH_ENABLED=true       # auto-inject live results for queries needing current data
+# BRAVE_API_KEY=                # optional Brave Search API key (free: 2000 req/month)
+#                               # if not set, falls back to DuckDuckGo (always free)
 
 # ── Storage (optional overrides) ──────────────────────────────────────────────
 # DATA_DIR=data
@@ -484,6 +502,7 @@ psycho_portal/
 │   ├── memory/                   ← 4-tier memory (short, long, semantic, episodic)
 │   ├── knowledge/                ← graph engine, extractor, evolver, reasoner, ingestion
 │   ├── learning/                 ← mistake tracker, signal detector, journal, insights
+│   ├── tools/                    ← pluggable agent tools (web_search.py)
 │   ├── domains/                  ← coding, health, tasks, general + router
 │   ├── storage/                  ← SQLite, ChromaDB, graph JSON store
 │   ├── cli/                      ← Rich TUI, chat view, dashboard
@@ -565,6 +584,7 @@ A full day of heavy use costs roughly **$0.05–0.20**. For production, swap to 
 | 6 | ✅ Done | FastAPI server + streaming WebSocket + web UI |
 | 7 | ✅ Done | Web UI v2: session history, file upload, drag & drop, image vision |
 | 8 | ✅ Done | Voice mode: STT + TTS + animated blob UI |
+| 9 | ✅ Done | Graph explorer, web search injection, inline image chat |
 
 ---
 

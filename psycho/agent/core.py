@@ -172,6 +172,20 @@ class PsychoAgent:
         async for token in self._loop.stream_process(user_message):
             yield token
 
+    async def stream_chat_with_image(
+        self, user_message: str, image_data: bytes, media_type: str
+    ):
+        """Yield tokens for a vision chat message (image + optional text)."""
+        if not self._started:
+            await self.start()
+        if not hasattr(self._llm, "stream_with_image"):
+            yield "[Image chat is not supported by the current LLM provider]"
+            return
+        async for token in self._loop.stream_process_with_image(
+            user_message, image_data, media_type
+        ):
+            yield token
+
     async def reflect(self):
         """Run post-session reflection. Returns ReflectionResult or None."""
         if not self._started:

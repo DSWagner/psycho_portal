@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import shutil
 import tempfile
@@ -133,6 +134,44 @@ async def ws_chat_handler(websocket: WebSocket, agent):
                 await websocket.send_json({"type": "pong"})
                 continue
 
+            # ── Image chat ─────────────────────────────────────────
+            if msg_type == "image_chat":
+                image_b64 = data.get("image", "")
+                media_type = data.get("media_type", "image/jpeg")
+                if not image_b64:
+                    await websocket.send_json({"type": "error", "message": "No image data"})
+                    continue
+                try:
+                    image_bytes = base64.b64decode(image_b64)
+                except Exception:
+                    await websocket.send_json({"type": "error", "message": "Invalid base64 image"})
+                    continue
+
+                full_response = []
+                try:
+                    async for token in agent.stream_chat_with_image(
+                        message, image_bytes, media_type
+                    ):
+                        full_response.append(token)
+                        await websocket.send_json({"type": "token", "token": token})
+                except Exception as e:
+                    await websocket.send_json({"type": "error", "message": str(e)})
+                    continue
+
+                loop = getattr(agent, '_loop', None)
+                domain_result = getattr(loop, '_last_domain_result', None)
+                actions = domain_result.actions_taken if domain_result else []
+                domain = getattr(loop, '_last_domain', "general")
+                await websocket.send_json({
+                    "type": "done",
+                    "response": "".join(full_response),
+                    "domain": domain,
+                    "actions": actions,
+                    "session_id": agent.session_id,
+                })
+                continue
+
+            # ── Regular text chat ──────────────────────────────────
             if not message:
                 await websocket.send_json({"type": "error", "message": "Empty message"})
                 continue
@@ -149,7 +188,10 @@ async def ws_chat_handler(websocket: WebSocket, agent):
             loop = getattr(agent, '_loop', None)
             domain_result = getattr(loop, '_last_domain_result', None)
             actions = domain_result.actions_taken if domain_result else []
-            domain = getattr(loop, '_last_domain', "general")   # FIX: _last_domain not _session_id
+            domain = getattr(loop, '_last_domain', "general")
+            search_query = ""
+            if hasattr(loop, '_last_search_query'):
+                search_query = loop._last_search_query or ""
 
             await websocket.send_json({
                 "type": "done",
@@ -157,6 +199,7 @@ async def ws_chat_handler(websocket: WebSocket, agent):
                 "domain": domain,
                 "actions": actions,
                 "session_id": agent.session_id,
+                "search_query": search_query,
             })
 
     except WebSocketDisconnect:

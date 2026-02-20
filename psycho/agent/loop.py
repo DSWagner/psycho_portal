@@ -77,6 +77,7 @@ class AgentLoop:
         self._domain_handlers = domain_handlers or {}
         self._last_domain_result = None
         self._last_domain: str = "general"   # FIX: track domain for API layer
+        self._last_search_query: str = ""    # forwarded to WebSocket done event
 
     # ── Main pipeline ──────────────────────────────────────────────
 
@@ -162,6 +163,7 @@ class AgentLoop:
         ctx.agent_response = "".join(full_parts)
         ctx.mark_complete()
         self._last_domain = ctx.domain
+        self._last_search_query = ctx.search_query
         self._last_domain_result = await self._run_domain_handler(ctx)
 
         await self._memory.add_interaction(
@@ -175,6 +177,60 @@ class AgentLoop:
         asyncio.create_task(
             self._extract_and_evolve(
                 user_message=user_message,
+                agent_response=ctx.agent_response,
+                domain=ctx.domain,
+                is_correction=ctx.is_correction,
+            )
+        )
+
+    async def stream_process_with_image(
+        self, user_message: str, image_data: bytes, media_type: str
+    ) -> AsyncIterator[str]:
+        """Streaming vision pipeline — image + optional text prompt."""
+        ctx = AgentContext(
+            session_id=self._session_id,
+            interaction_id=str(uuid.uuid4()),
+            user_message=user_message or "Describe and analyse this image in detail.",
+            image_data=image_data,
+            image_media_type=media_type,
+        )
+
+        await self._prepare_context(ctx)
+        system_prompt = self._build_system_prompt(ctx)
+        prior_messages = self._memory.short_term.get_messages()
+
+        full_parts: list[str] = []
+        try:
+            async for token in self._llm.stream_with_image(
+                prior_messages=prior_messages,
+                image_data=image_data,
+                media_type=media_type,
+                user_text=ctx.user_message,
+                system=system_prompt,
+            ):
+                full_parts.append(token)
+                yield token
+        except Exception as e:
+            err = f"\n\nStream error: {e}"
+            full_parts.append(err)
+            yield err
+
+        ctx.agent_response = "".join(full_parts)
+        ctx.mark_complete()
+        self._last_domain = ctx.domain
+        self._last_domain_result = await self._run_domain_handler(ctx)
+
+        await self._memory.add_interaction(
+            session_id=self._session_id,
+            user_message=ctx.user_message,
+            agent_response=ctx.agent_response,
+            domain=ctx.domain,
+            tokens_used=0,
+        )
+
+        asyncio.create_task(
+            self._extract_and_evolve(
+                user_message=ctx.user_message,
                 agent_response=ctx.agent_response,
                 domain=ctx.domain,
                 is_correction=ctx.is_correction,
@@ -279,6 +335,23 @@ class AgentLoop:
         # 4. Domain-specific context (tasks list, health stats)
         ctx.domain_context = await self._get_domain_context(ctx)
 
+        # 5. Web search — inject live results when query needs current data
+        try:
+            from psycho.config import get_settings
+            from psycho.tools.web_search import (
+                extract_query, format_search_results, should_search, web_search,
+            )
+            s = get_settings()
+            if s.web_search_enabled and should_search(ctx.user_message):
+                query = extract_query(ctx.user_message)
+                results = await web_search(query, brave_api_key=s.brave_api_key)
+                if results:
+                    ctx.search_query = query
+                    ctx.search_results = format_search_results(results, query)
+                    logger.debug(f"Web search injected: {len(results)} results for {query!r}")
+        except Exception as e:
+            logger.debug(f"Web search skipped: {e}")
+
     # ── System prompt assembly ─────────────────────────────────────
 
     def _build_system_prompt(self, ctx: AgentContext) -> str:
@@ -301,6 +374,10 @@ class AgentLoop:
         # Domain context (pending tasks, health stats)
         if ctx.domain_context:
             parts.append(ctx.domain_context)
+
+        # Live web search results
+        if ctx.search_results:
+            parts.append(ctx.search_results)
 
         # Knowledge graph
         if ctx.graph_context:

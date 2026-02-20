@@ -57,6 +57,16 @@ class Settings(BaseSettings):
         default="21m00Tcm4TlvDq8ikWAM", description="ElevenLabs voice ID (default: Rachel)"
     )
 
+    # ── Web Search ────────────────────────────────────────────────
+    web_search_enabled: bool = Field(
+        default=True,
+        description="Inject live web results for queries that need current data",
+    )
+    brave_api_key: str = Field(
+        default="",
+        description="Brave Search API key (optional, free tier 2000 req/month); falls back to DuckDuckGo",
+    )
+
     # ── API Server ────────────────────────────────────────────────
     api_host: str = Field(default="0.0.0.0")
     api_port: int = Field(default=8000)
