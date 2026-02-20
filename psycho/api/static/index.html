@@ -10,7 +10,7 @@
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <style>
     :root {
-      --bg: #0d1117; --surface: #161b22; --border: #30363d;
+      --bg: #0d1117; --surface: #161b22; --surface2: #1c2128; --border: #30363d;
       --text: #e6edf3; --muted: #8b949e; --accent: #c678dd;
       --green: #3fb950; --yellow: #d29922; --red: #f85149;
       --blue: #58a6ff; --orange: #f0883e;
@@ -19,20 +19,41 @@
     body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 
     /* ── Header ── */
-    #header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 10px 20px; display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
-    #logo { font-size: 1.2rem; font-weight: 700; color: var(--accent); letter-spacing: 1px; }
-    #status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
+    #header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 8px 16px; display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+    #logo { font-size: 1.1rem; font-weight: 700; color: var(--accent); letter-spacing: 1px; white-space: nowrap; }
+    #status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; flex-shrink: 0; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
-    .badge { background: var(--border); color: var(--muted); font-size: 0.72rem; padding: 2px 8px; border-radius: 12px; }
+    .badge { background: var(--border); color: var(--muted); font-size: 0.7rem; padding: 2px 8px; border-radius: 12px; white-space: nowrap; }
     .badge.domain { background: #1e3a2f; color: var(--green); }
     #header-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+    .hdr-btn { background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 5px 12px; font-size: 0.8rem; cursor: pointer; transition: all .2s; white-space: nowrap; }
+    .hdr-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .hdr-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .hdr-btn.primary:hover { opacity: .85; }
 
     /* ── Layout ── */
     #main { display: flex; flex: 1; overflow: hidden; }
-    #chat-panel { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-    #sidebar { width: 300px; background: var(--surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
 
-    /* ── Chat area ── */
+    /* ── Left sidebar (history) ── */
+    #history-panel { width: 220px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; transition: width .25s; }
+    #history-panel.collapsed { width: 0; }
+    #history-inner { width: 220px; display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+    #history-header { padding: 10px 12px; font-size: 0.7rem; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+    #sessions-list { flex: 1; overflow-y: auto; padding: 6px; }
+    #sessions-list::-webkit-scrollbar { width: 4px; }
+    #sessions-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    .session-item { padding: 8px 10px; border-radius: 8px; cursor: pointer; margin-bottom: 4px; border: 1px solid transparent; transition: all .15s; }
+    .session-item:hover { background: var(--surface2); border-color: var(--border); }
+    .session-item.active { background: #1e1a2f; border-color: #4a3080; }
+    .session-date { font-size: 0.72rem; color: var(--muted); }
+    .session-count { font-size: 0.68rem; color: var(--muted); }
+    .session-label { font-size: 0.8rem; color: var(--text); font-weight: 500; margin-bottom: 2px; }
+    .current-tag { font-size: 0.62rem; background: #1e3a2f; color: var(--green); padding: 1px 5px; border-radius: 6px; margin-left: 4px; }
+
+    /* ── Chat panel ── */
+    #chat-panel { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+    /* ── Messages ── */
     #messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
     #messages::-webkit-scrollbar { width: 6px; }
     #messages::-webkit-scrollbar-track { background: transparent; }
@@ -41,11 +62,12 @@
     .msg { max-width: 90%; }
     .msg.user { align-self: flex-end; }
     .msg.agent { align-self: flex-start; }
-    .msg-label { font-size: 0.7rem; color: var(--muted); margin-bottom: 4px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; }
+    .msg-label { font-size: 0.68rem; color: var(--muted); margin-bottom: 4px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; }
     .msg.user .msg-label { text-align: right; }
     .msg-bubble { padding: 12px 16px; border-radius: 12px; line-height: 1.6; font-size: 0.92rem; }
     .msg.user .msg-bubble { background: #1c2b3a; border: 1px solid #2d4a6e; color: var(--blue); }
     .msg.agent .msg-bubble { background: var(--surface); border: 1px solid var(--border); }
+    .msg.history-msg .msg-bubble { opacity: 0.75; }
     .msg-bubble pre { margin: 8px 0; border-radius: 8px; overflow-x: auto; }
     .msg-bubble code:not(pre code) { background: #1a1f26; padding: 1px 5px; border-radius: 4px; font-size: 0.85em; color: var(--orange); }
     .msg-bubble p { margin-bottom: 8px; }
@@ -56,57 +78,59 @@
     .msg-bubble table { border-collapse: collapse; width: 100%; margin: 8px 0; }
     .msg-bubble th,.msg-bubble td { border: 1px solid var(--border); padding: 6px 12px; text-align: left; }
     .msg-bubble th { background: var(--bg); color: var(--accent); }
-
     .action-pill { display: inline-block; background: #1e3a2f; color: var(--green); font-size: 0.72rem; padding: 2px 8px; border-radius: 10px; margin: 2px; }
-
     .thinking { color: var(--muted); font-style: italic; font-size: 0.85rem; }
     .cursor { display: inline-block; width: 2px; height: 14px; background: var(--accent); animation: blink 0.8s infinite; vertical-align: middle; margin-left: 2px; }
     @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+    .history-divider { text-align: center; color: var(--muted); font-size: 0.72rem; padding: 8px 0; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
 
     /* ── Input area ── */
-    #input-area { background: var(--surface); border-top: 1px solid var(--border); padding: 12px 16px; display: flex; gap: 10px; align-items: flex-end; }
+    #input-area { background: var(--surface); border-top: 1px solid var(--border); padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
+    #input-row { display: flex; gap: 8px; align-items: flex-end; }
     #msg-input { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; color: var(--text); padding: 10px 14px; font-size: 0.92rem; font-family: inherit; resize: none; max-height: 120px; line-height: 1.5; transition: border-color .2s; }
     #msg-input:focus { outline: none; border-color: var(--accent); }
     #msg-input::placeholder { color: var(--muted); }
     #send-btn { background: var(--accent); color: #fff; border: none; border-radius: 10px; padding: 10px 18px; font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: opacity .2s; white-space: nowrap; }
     #send-btn:hover { opacity: .85; }
     #send-btn:disabled { opacity: .4; cursor: default; }
+    #attach-btn { background: var(--surface2); border: 1px solid var(--border); color: var(--muted); border-radius: 10px; padding: 10px 12px; cursor: pointer; font-size: 1rem; transition: all .2s; line-height: 1; }
+    #attach-btn:hover { border-color: var(--accent); color: var(--accent); }
+    #file-input { display: none; }
 
-    /* ── Sidebar ── */
+    /* ── Upload progress bar ── */
+    #upload-bar { display: none; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; font-size: 0.8rem; color: var(--muted); align-items: center; gap: 10px; }
+    #upload-bar.show { display: flex; }
+    #upload-filename { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #upload-progress { height: 4px; background: var(--border); border-radius: 2px; flex: 1; overflow: hidden; }
+    #upload-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width .3s; }
+
+    /* ── Right sidebar ── */
+    #sidebar { width: 280px; background: var(--surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; }
     .sidebar-section { border-bottom: 1px solid var(--border); }
-    .sidebar-header { padding: 10px 14px; font-size: 0.72rem; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 1px; cursor: pointer; display: flex; justify-content: space-between; user-select: none; }
-    .sidebar-content { padding: 8px 14px 12px; }
-    .stat-row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 0.82rem; }
+    .sidebar-header { padding: 9px 14px; font-size: 0.7rem; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 1px; cursor: pointer; display: flex; justify-content: space-between; user-select: none; }
+    .sidebar-content { padding: 8px 14px 10px; }
+    .stat-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 0.8rem; }
     .stat-label { color: var(--muted); }
     .stat-value { font-weight: 600; }
-
-    .task-item { padding: 6px 0; border-bottom: 1px solid #1c2128; font-size: 0.82rem; }
+    .task-item { padding: 5px 0; border-bottom: 1px solid #1c2128; font-size: 0.8rem; }
     .task-item:last-child { border: none; }
-    .task-priority { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; padding: 1px 5px; border-radius: 8px; margin-right: 6px; }
+    .task-priority { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; padding: 1px 5px; border-radius: 8px; margin-right: 5px; }
     .priority-urgent { background: #3d1a1a; color: var(--red); }
     .priority-high { background: #3d2e0a; color: var(--yellow); }
     .priority-normal { background: #1c2128; color: var(--muted); }
     .priority-low { background: #111; color: #555; }
 
-    /* ── Graph viz ── */
-    #graph-svg { width: 100%; height: 180px; background: var(--bg); }
+    /* ── Graph ── */
+    #graph-svg { width: 100%; height: 175px; background: var(--bg); }
     .graph-node { cursor: pointer; }
-    .node-concept { fill: #4c8ed4; }
-    .node-entity  { fill: #58a6ff; }
-    .node-preference { fill: #3fb950; }
-    .node-fact    { fill: #d29922; }
-    .node-technology { fill: #79c0ff; }
-    .node-mistake { fill: #f85149; }
-    .node-person  { fill: #e8b428; }
-    .node-question { fill: var(--muted); }
-    .node-file    { fill: #c678dd; }
-    .node-skill   { fill: #56d364; }
-    .node-topic   { fill: #b083f0; }
-    .node-event   { fill: #f08080; }
+    .node-concept { fill: #4c8ed4; } .node-entity { fill: #58a6ff; }
+    .node-preference { fill: #3fb950; } .node-fact { fill: #d29922; }
+    .node-technology { fill: #79c0ff; } .node-mistake { fill: #f85149; }
+    .node-person { fill: #e8b428; } .node-question { fill: var(--muted); }
+    .node-file { fill: #c678dd; } .node-skill { fill: #56d364; }
+    .node-topic { fill: #b083f0; } .node-event { fill: #f08080; }
     .graph-link { stroke: var(--border); stroke-opacity: 0.5; }
-    .graph-label { fill: var(--muted); font-size: 8px; pointer-events: none; }
-
-    .empty-state { color: var(--muted); font-size: 0.82rem; text-align: center; padding: 16px 0; }
+    .empty-state { color: var(--muted); font-size: 0.8rem; text-align: center; padding: 14px 0; }
 
     /* ── Ingest panel ── */
     #ingest-area { display: flex; gap: 6px; }
@@ -115,46 +139,169 @@
     #ingest-btn:hover { background: #2d4a3f; }
 
     /* ── Toast ── */
-    #toast { position: fixed; bottom: 24px; right: 24px; background: #1c3a2f; border: 1px solid var(--green); color: var(--green); padding: 10px 18px; border-radius: 10px; font-size: 0.85rem; opacity: 0; transition: opacity .3s; pointer-events: none; z-index: 100; }
+    #toast { position: fixed; bottom: 24px; right: 24px; background: #1c3a2f; border: 1px solid var(--green); color: var(--green); padding: 10px 18px; border-radius: 10px; font-size: 0.85rem; opacity: 0; transition: opacity .3s; pointer-events: none; z-index: 100; max-width: 340px; }
     #toast.show { opacity: 1; }
 
-    @media (max-width: 700px) {
-      #sidebar { display: none; }
+    /* ── Drag-over overlay ── */
+    #drag-overlay { display: none; position: fixed; inset: 0; background: rgba(198,120,221,.12); border: 3px dashed var(--accent); z-index: 200; align-items: center; justify-content: center; font-size: 1.4rem; color: var(--accent); pointer-events: none; }
+    #drag-overlay.active { display: flex; }
+
+    @media (max-width: 900px) { #sidebar { display: none; } }
+    @media (max-width: 650px) { #history-panel { display: none; } }
+
+    /* ══════════════════════════════════════════════════════════════
+       VOICE MODE
+    ══════════════════════════════════════════════════════════════ */
+    #voice-overlay {
+      display: none;
+      position: fixed; inset: 0; z-index: 500;
+      background: radial-gradient(ellipse at center, #0e0716 0%, #07050f 100%);
+      flex-direction: column; align-items: center; justify-content: center;
+      gap: 0;
     }
+    #voice-overlay.active { display: flex; }
+
+    /* Top bar */
+    #voice-topbar {
+      position: absolute; top: 0; left: 0; right: 0;
+      padding: 16px 20px; display: flex; align-items: center; justify-content: space-between;
+    }
+    #voice-title { color: rgba(255,255,255,.45); font-size: .78rem; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; }
+    #voice-provider-badge { font-size: .65rem; background: rgba(255,255,255,.06); color: rgba(255,255,255,.35); padding: 2px 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,.08); }
+    #voice-close-btn { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); color: rgba(255,255,255,.5); border-radius: 8px; padding: 6px 14px; cursor: pointer; font-size: .8rem; transition: all .2s; }
+    #voice-close-btn:hover { background: rgba(248,81,73,.15); border-color: var(--red); color: var(--red); }
+
+    /* Blob canvas */
+    #voice-blob-wrap {
+      position: relative; display: flex; align-items: center; justify-content: center;
+      width: 320px; height: 320px; flex-shrink: 0;
+    }
+    #blob-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+    /* Pulse rings for listening state */
+    .pulse-ring {
+      position: absolute; border-radius: 50%;
+      border: 1.5px solid rgba(34, 211, 238, .25);
+      animation: ring-expand 2s ease-out infinite;
+      pointer-events: none;
+    }
+    .pulse-ring:nth-child(2) { animation-delay: .6s; }
+    .pulse-ring:nth-child(3) { animation-delay: 1.2s; }
+    @keyframes ring-expand {
+      0%   { width: 160px; height: 160px; opacity: .7; }
+      100% { width: 310px; height: 310px; opacity: 0; }
+    }
+    #pulse-rings { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; opacity: 0; transition: opacity .4s; }
+    #pulse-rings.active { opacity: 1; }
+
+    /* Status + transcript */
+    #voice-status {
+      font-size: .8rem; font-weight: 700; letter-spacing: 3px; text-transform: uppercase;
+      margin-top: 8px; height: 20px;
+      transition: color .4s;
+    }
+    #voice-transcript-wrap {
+      width: min(480px, 90vw); min-height: 60px; max-height: 120px;
+      overflow-y: auto; margin-top: 14px; padding: 0 12px;
+      text-align: center;
+    }
+    #voice-transcript-wrap::-webkit-scrollbar { display: none; }
+    #voice-user-text {
+      font-size: .92rem; color: rgba(88,166,255,.75); line-height: 1.5;
+      min-height: 24px; margin-bottom: 6px; font-style: italic;
+    }
+    #voice-agent-text {
+      font-size: .9rem; color: rgba(230,237,243,.65); line-height: 1.5;
+    }
+
+    /* Controls */
+    #voice-controls { display: flex; align-items: center; gap: 28px; margin-top: 32px; }
+    #voice-mic-btn {
+      width: 72px; height: 72px; border-radius: 50%;
+      background: rgba(255,255,255,.06);
+      border: 2px solid rgba(255,255,255,.15);
+      color: rgba(255,255,255,.7); font-size: 1.6rem;
+      cursor: pointer; transition: all .25s; display: flex; align-items: center; justify-content: center;
+      position: relative;
+    }
+    #voice-mic-btn:hover { background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.3); }
+    #voice-mic-btn.listening {
+      background: rgba(34,211,238,.12);
+      border-color: #22d3ee;
+      box-shadow: 0 0 28px rgba(34,211,238,.3);
+      animation: mic-pulse 1.4s ease-in-out infinite;
+    }
+    #voice-mic-btn.disabled { opacity: .3; cursor: not-allowed; }
+    @keyframes mic-pulse { 0%,100%{box-shadow:0 0 28px rgba(34,211,238,.3)} 50%{box-shadow:0 0 50px rgba(34,211,238,.6)} }
+    #voice-end-btn {
+      width: 52px; height: 52px; border-radius: 50%;
+      background: rgba(248,81,73,.12); border: 2px solid rgba(248,81,73,.3);
+      color: var(--red); font-size: 1.1rem;
+      cursor: pointer; transition: all .25s; display: flex; align-items: center; justify-content: center;
+    }
+    #voice-end-btn:hover { background: rgba(248,81,73,.25); box-shadow: 0 0 20px rgba(248,81,73,.3); }
+    #voice-stt-unsupported { color: var(--red); font-size: .8rem; display: none; text-align: center; }
   </style>
 </head>
 <body>
 
+<div id="drag-overlay">Drop file to ingest</div>
+
 <div id="header">
   <div id="status-dot"></div>
-  <div id="logo">PSYCHO PORTAL</div>
+  <div id="logo">PSYCHOPORTAL</div>
   <span class="badge" id="model-badge">connecting…</span>
   <span class="badge domain" id="domain-badge">general</span>
   <div id="header-right">
     <span class="badge" id="session-badge">—</span>
+    <button class="hdr-btn" id="toggle-history-btn" title="Toggle session history">☰ History</button>
+    <button class="hdr-btn" id="voice-open-btn" title="Open voice mode" style="border-color:#4a3080;color:#b083f0;">🎤 Voice</button>
+    <button class="hdr-btn primary" id="new-conv-btn">+ New Chat</button>
   </div>
 </div>
 
 <div id="main">
+  <!-- ── Session History (left sidebar) ── -->
+  <div id="history-panel">
+    <div id="history-inner">
+      <div id="history-header">
+        Sessions
+        <span id="sessions-count" style="color:var(--muted);font-weight:400">0</span>
+      </div>
+      <div id="sessions-list">
+        <div class="empty-state">No sessions yet</div>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Chat panel ── -->
   <div id="chat-panel">
     <div id="messages">
-      <div class="msg agent">
-        <div class="msg-label">PsychoPortal</div>
+      <div class="msg agent" id="welcome-msg">
+        <div class="msg-label">PSYCHOPORTAL</div>
         <div class="msg-bubble">
-          <p>Hello! I'm <strong>PsychoPortal</strong> — your self-evolving AI assistant.</p>
-          <p>I build a persistent knowledge graph from our conversations, remember everything across sessions, and get smarter every time we talk.</p>
-          <p style="color:var(--muted);font-size:.85rem">Try asking me anything, share files with <code>/ingest path</code> in the CLI, or just start chatting!</p>
+          <p>Hello! I'm your <strong>self-evolving AI assistant</strong>.</p>
+          <p>I build a persistent knowledge graph from our conversations and remember everything across sessions.</p>
+          <p style="color:var(--muted);font-size:.84rem">Upload files with the 📎 button, paste text in the sidebar, or just start chatting!</p>
         </div>
       </div>
     </div>
     <div id="input-area">
-      <textarea id="msg-input" rows="1" placeholder="Type a message… (Enter to send, Shift+Enter for newline)"></textarea>
-      <button id="send-btn">Send</button>
+      <div id="upload-bar">
+        <span id="upload-filename">filename.pdf</span>
+        <div id="upload-progress"><div id="upload-fill" style="width:0%"></div></div>
+        <span id="upload-status" style="white-space:nowrap">Uploading…</span>
+      </div>
+      <div id="input-row">
+        <input type="file" id="file-input" accept=".txt,.md,.rst,.py,.js,.ts,.jsx,.tsx,.go,.rs,.java,.cpp,.c,.h,.cs,.rb,.php,.swift,.kt,.sh,.json,.yaml,.yml,.toml,.csv,.xml,.pdf,.png,.jpg,.jpeg,.gif,.webp" />
+        <button id="attach-btn" title="Upload file (PDF, code, images, text…)">📎</button>
+        <textarea id="msg-input" rows="1" placeholder="Type a message… (Enter to send, Shift+Enter for newline)"></textarea>
+        <button id="send-btn">Send</button>
+      </div>
     </div>
   </div>
 
-  <!-- ── Sidebar ── -->
+  <!-- ── Right sidebar ── -->
   <div id="sidebar">
     <!-- Stats -->
     <div class="sidebar-section">
@@ -168,7 +315,7 @@
         <div class="stat-row"><span class="stat-label">Pending tasks</span><span class="stat-value" id="s-tasks">—</span></div>
         <div class="stat-row"><span class="stat-label">Health entries</span><span class="stat-value" id="s-health">—</span></div>
         <div class="stat-row"><span class="stat-label">Mistakes logged</span><span class="stat-value" id="s-mistakes">—</span></div>
-        <div class="stat-row"><span class="stat-label">Model</span><span class="stat-value" id="s-model" style="font-size:.72rem">—</span></div>
+        <div class="stat-row"><span class="stat-label">Model</span><span class="stat-value" id="s-model" style="font-size:.7rem">—</span></div>
       </div>
     </div>
 
@@ -186,12 +333,12 @@
       <div id="graph-body" style="flex:1;overflow:hidden;">
         <svg id="graph-svg"></svg>
         <div class="sidebar-content" style="padding-top:4px;">
-          <div id="graph-legend" style="display:flex;flex-wrap:wrap;gap:4px;font-size:.68rem;"></div>
+          <div id="graph-legend" style="display:flex;flex-wrap:wrap;gap:4px;font-size:.65rem;"></div>
         </div>
       </div>
     </div>
 
-    <!-- Ingest -->
+    <!-- Ingest text -->
     <div class="sidebar-section">
       <div class="sidebar-header">INGEST TEXT</div>
       <div class="sidebar-content">
@@ -201,6 +348,38 @@
         </div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- ══════════════════ VOICE MODE OVERLAY ══════════════════ -->
+<div id="voice-overlay">
+  <div id="voice-topbar">
+    <span id="voice-title">Voice Mode</span>
+    <span id="voice-provider-badge">browser tts</span>
+    <button id="voice-close-btn">✕ End Call</button>
+  </div>
+
+  <div id="voice-blob-wrap">
+    <div id="pulse-rings">
+      <div class="pulse-ring"></div>
+      <div class="pulse-ring"></div>
+      <div class="pulse-ring"></div>
+    </div>
+    <canvas id="blob-canvas"></canvas>
+  </div>
+
+  <div id="voice-status" style="color:rgba(255,255,255,.35)">READY</div>
+
+  <div id="voice-transcript-wrap">
+    <div id="voice-user-text"></div>
+    <div id="voice-agent-text"></div>
+  </div>
+
+  <p id="voice-stt-unsupported">⚠ Speech recognition not supported in this browser.<br>Use Chrome or Edge for voice input.</p>
+
+  <div id="voice-controls">
+    <button id="voice-end-btn" title="End call">📵</button>
+    <button id="voice-mic-btn" title="Tap to speak">🎤</button>
   </div>
 </div>
 
@@ -216,6 +395,8 @@ let ws = null;
 let wsReady = false;
 let currentStreamDiv = null;
 let currentStreamContent = '';
+let currentSessionId = null;
+let viewingHistorySession = null; // null = live, string = viewing a past session
 
 // ── Markdown renderer ─────────────────────────────────────────────────────────
 marked.setOptions({ breaks: true, gfm: true });
@@ -236,6 +417,7 @@ function connect() {
     loadStats();
     loadTasks();
     loadGraph();
+    loadSessions();
   };
   ws.onclose = () => {
     wsReady = false;
@@ -246,9 +428,8 @@ function connect() {
   ws.onmessage = e => {
     const data = JSON.parse(e.data);
     if (data.type === 'token') handleToken(data.token);
-    else if (data.type === 'done') handleDone(data);
+    else if (data.type === 'done') (window.handleDone || handleDone)(data);
     else if (data.type === 'error') handleError(data.message);
-    else if (data.type === 'pong') {}
   };
 }
 
@@ -279,13 +460,14 @@ function handleDone(data) {
     currentStreamDiv = null;
     currentStreamContent = '';
   }
-  if (data.domain) {
-    document.getElementById('domain-badge').textContent = data.domain;
+  if (data.domain) document.getElementById('domain-badge').textContent = data.domain;
+  if (data.session_id) {
+    currentSessionId = data.session_id;
+    document.getElementById('session-badge').textContent = 'session: ' + data.session_id;
   }
   document.getElementById('send-btn').disabled = false;
   scrollBottom();
-  // Refresh sidebar
-  setTimeout(() => { loadStats(); loadTasks(); loadGraph(); }, 500);
+  setTimeout(() => { loadStats(); loadTasks(); loadGraph(); loadSessions(); }, 600);
 }
 
 function handleError(msg) {
@@ -299,11 +481,15 @@ function handleError(msg) {
   showToast('Error: ' + msg, 'red');
 }
 
-// ── Sending messages ──────────────────────────────────────────────────────────
+// ── Sending ───────────────────────────────────────────────────────────────────
 function sendMessage() {
   const input = document.getElementById('msg-input');
   const text = input.value.trim();
   if (!text || !wsReady) return;
+
+  // If viewing history, switch back to live first
+  if (viewingHistorySession) switchToLive();
+
   addMessage('user', text);
   input.value = '';
   input.style.height = 'auto';
@@ -321,11 +507,37 @@ document.getElementById('msg-input').addEventListener('input', function() {
   this.style.height = Math.min(this.scrollHeight, 120) + 'px';
 });
 
+// ── New conversation ───────────────────────────────────────────────────────────
+document.getElementById('new-conv-btn').addEventListener('click', () => {
+  switchToLive();
+  clearMessages();
+  showToast('New conversation started. Memory and knowledge graph are preserved.');
+});
+
+function switchToLive() {
+  viewingHistorySession = null;
+  // Re-mark current session as active
+  document.querySelectorAll('.session-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.sessionId === currentSessionId);
+  });
+}
+
+function clearMessages() {
+  const container = document.getElementById('messages');
+  container.innerHTML = `
+    <div class="msg agent">
+      <div class="msg-label">PSYCHOPORTAL</div>
+      <div class="msg-bubble">
+        <p>New conversation. I still have all my memories — what would you like to talk about?</p>
+      </div>
+    </div>`;
+}
+
 // ── Message rendering ─────────────────────────────────────────────────────────
-function addMessage(role, content, streaming = false) {
+function addMessage(role, content, streaming = false, extraClass = '') {
   const container = document.getElementById('messages');
   const msgDiv = document.createElement('div');
-  msgDiv.className = `msg ${role}`;
+  msgDiv.className = `msg ${role}${extraClass ? ' ' + extraClass : ''}`;
   const labelText = role === 'user' ? 'YOU' : 'PSYCHOPORTAL';
   msgDiv.innerHTML = `
     <div class="msg-label">${labelText}</div>
@@ -339,6 +551,176 @@ function addMessage(role, content, streaming = false) {
 function scrollBottom() {
   const m = document.getElementById('messages');
   m.scrollTop = m.scrollHeight;
+}
+
+// ── Session history ───────────────────────────────────────────────────────────
+async function loadSessions() {
+  try {
+    const r = await fetch(`${BASE}/api/sessions?limit=40`);
+    const d = await r.json();
+    renderSessions(d.sessions || []);
+  } catch (e) {}
+}
+
+function renderSessions(sessions) {
+  const list = document.getElementById('sessions-list');
+  document.getElementById('sessions-count').textContent = sessions.length;
+
+  if (sessions.length === 0) {
+    list.innerHTML = '<div class="empty-state">No sessions yet</div>';
+    return;
+  }
+
+  list.innerHTML = sessions.map((s, i) => {
+    const date = new Date(s.started_at * 1000);
+    const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const isCurrent = s.id === currentSessionId;
+    const count = s.message_count || 0;
+    return `
+      <div class="session-item${isCurrent ? ' active' : ''}" data-session-id="${s.id}" onclick="loadSessionHistory('${s.id}')">
+        <div class="session-label">${dateStr} ${timeStr}${isCurrent ? '<span class="current-tag">live</span>' : ''}</div>
+        <div class="session-count">${count} message${count !== 1 ? 's' : ''}</div>
+      </div>`;
+  }).join('');
+}
+
+async function loadSessionHistory(sessionId) {
+  // Mark active
+  document.querySelectorAll('.session-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.sessionId === sessionId);
+  });
+
+  if (sessionId === currentSessionId) {
+    switchToLive();
+    return;
+  }
+
+  viewingHistorySession = sessionId;
+
+  try {
+    const r = await fetch(`${BASE}/api/sessions/${sessionId}/messages`);
+    const d = await r.json();
+    const messages = d.messages || [];
+
+    const container = document.getElementById('messages');
+    container.innerHTML = '';
+
+    if (messages.length === 0) {
+      container.innerHTML = '<div class="empty-state" style="margin-top:40px">No messages in this session</div>';
+      return;
+    }
+
+    const date = new Date(messages[0].timestamp * 1000).toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+    const divider = document.createElement('div');
+    divider.className = 'history-divider';
+    divider.textContent = `— Session from ${date} —`;
+    container.appendChild(divider);
+
+    messages.forEach(m => {
+      addMessage('user', m.user_message, false, 'history-msg');
+      addMessage('agent', m.agent_response, false, 'history-msg');
+    });
+
+    const note = document.createElement('div');
+    note.className = 'history-divider';
+    note.innerHTML = 'Viewing history &mdash; <a href="#" onclick="switchToLive();return false;" style="color:var(--accent)">return to live chat</a>';
+    container.appendChild(note);
+    scrollBottom();
+  } catch (e) {
+    showToast('Failed to load session history', 'red');
+  }
+}
+
+// Toggle history panel
+document.getElementById('toggle-history-btn').addEventListener('click', () => {
+  document.getElementById('history-panel').classList.toggle('collapsed');
+});
+
+// ── File upload ───────────────────────────────────────────────────────────────
+document.getElementById('attach-btn').addEventListener('click', () => {
+  document.getElementById('file-input').click();
+});
+
+document.getElementById('file-input').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (file) uploadFile(file);
+  e.target.value = ''; // reset so same file can be uploaded again
+});
+
+// Drag and drop anywhere on the page
+document.addEventListener('dragover', e => {
+  e.preventDefault();
+  document.getElementById('drag-overlay').classList.add('active');
+});
+document.addEventListener('dragleave', e => {
+  if (!e.relatedTarget) document.getElementById('drag-overlay').classList.remove('active');
+});
+document.addEventListener('drop', e => {
+  e.preventDefault();
+  document.getElementById('drag-overlay').classList.remove('active');
+  const file = e.dataTransfer.files[0];
+  if (file) uploadFile(file);
+});
+
+async function uploadFile(file) {
+  const bar = document.getElementById('upload-bar');
+  const fill = document.getElementById('upload-fill');
+  const status = document.getElementById('upload-status');
+  const fname = document.getElementById('upload-filename');
+
+  fname.textContent = file.name;
+  fill.style.width = '0%';
+  status.textContent = 'Uploading…';
+  bar.classList.add('show');
+
+  // Fake progress animation while waiting
+  let prog = 0;
+  const progInterval = setInterval(() => {
+    prog = Math.min(prog + 8, 85);
+    fill.style.width = prog + '%';
+  }, 200);
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const r = await fetch(`${BASE}/api/upload`, { method: 'POST', body: formData });
+    clearInterval(progInterval);
+    fill.style.width = '100%';
+
+    if (!r.ok) {
+      const err = await r.json();
+      status.textContent = 'Failed';
+      bar.style.borderColor = 'var(--red)';
+      showToast(err.error || 'Upload failed', 'red');
+      setTimeout(() => { bar.classList.remove('show'); bar.style.borderColor = ''; }, 3000);
+      return;
+    }
+
+    const d = await r.json();
+    status.textContent = 'Done!';
+
+    // Add a system message in chat
+    const container = document.getElementById('messages');
+    const sysmsg = document.createElement('div');
+    sysmsg.style.cssText = 'text-align:center;padding:8px 0;';
+    const errs = d.errors && d.errors.length > 0 ? ` (${d.errors.join(', ')})` : '';
+    sysmsg.innerHTML = `<span style="background:#1e1a2f;border:1px solid #4a3080;color:#b083f0;font-size:.75rem;padding:4px 12px;border-radius:10px;">
+      📎 <strong>${escHtml(file.name)}</strong> ingested — +${d.nodes_added} nodes, +${d.facts_added} facts${errs}
+    </span>`;
+    container.appendChild(sysmsg);
+    scrollBottom();
+
+    showToast(`${file.name}: +${d.nodes_added} nodes, +${d.facts_added} facts`);
+    setTimeout(() => { loadStats(); loadGraph(); }, 800);
+    setTimeout(() => { bar.classList.remove('show'); }, 2000);
+  } catch (e) {
+    clearInterval(progInterval);
+    status.textContent = 'Error';
+    showToast('Upload error: ' + e.message, 'red');
+    setTimeout(() => bar.classList.remove('show'), 3000);
+  }
 }
 
 // ── Stats ─────────────────────────────────────────────────────────────────────
@@ -356,7 +738,10 @@ async function loadStats() {
     document.getElementById('s-mistakes').textContent = s.total_mistakes || 0;
     document.getElementById('s-model').textContent = s.model || '—';
     document.getElementById('model-badge').textContent = s.model || '—';
-    document.getElementById('session-badge').textContent = 'session: ' + (s.session_id || '—');
+    if (s.session_id && !currentSessionId) {
+      currentSessionId = s.session_id;
+      document.getElementById('session-badge').textContent = 'session: ' + s.session_id;
+    }
   } catch (e) {}
 }
 
@@ -380,7 +765,7 @@ async function loadTasks() {
   } catch (e) {}
 }
 
-// ── Knowledge graph D3 viz ─────────────────────────────────────────────────────
+// ── Knowledge graph D3 ─────────────────────────────────────────────────────────
 let graphSimulation = null;
 
 async function loadGraph() {
@@ -391,37 +776,31 @@ async function loadGraph() {
   } catch (e) {}
 }
 
+const nodeColorMap = {concept:'#4c8ed4',entity:'#58a6ff',preference:'#3fb950',fact:'#d29922',
+  technology:'#79c0ff',mistake:'#f85149',person:'#e8b428',question:'#8b949e',
+  file:'#c678dd',skill:'#56d364',topic:'#b083f0',event:'#f08080'};
+
 function renderGraph(nodes, links) {
   const svg = d3.select('#graph-svg');
   svg.selectAll('*').remove();
   if (nodes.length === 0) return;
 
   const el = document.getElementById('graph-svg');
-  const W = el.clientWidth || 280;
-  const H = el.clientHeight || 180;
-
-  const color = d => {
-    const map = {concept:'#4c8ed4',entity:'#58a6ff',preference:'#3fb950',fact:'#d29922',
-      technology:'#79c0ff',mistake:'#f85149',person:'#e8b428',question:'#8b949e',
-      file:'#c678dd',skill:'#56d364',topic:'#b083f0',event:'#f08080'};
-    return map[d.type] || '#8b949e';
-  };
+  const W = el.clientWidth || 260;
+  const H = el.clientHeight || 175;
 
   const nodeMap = {};
   nodes.forEach(n => nodeMap[n.id] = n);
-
   const validLinks = links.filter(l => nodeMap[l.source] && nodeMap[l.target]);
 
   if (graphSimulation) graphSimulation.stop();
-
   graphSimulation = d3.forceSimulation(nodes)
-    .force('link', d3.forceLink(validLinks).id(d => d.id).distance(40))
-    .force('charge', d3.forceManyBody().strength(-40))
+    .force('link', d3.forceLink(validLinks).id(d => d.id).distance(38))
+    .force('charge', d3.forceManyBody().strength(-38))
     .force('center', d3.forceCenter(W / 2, H / 2))
-    .force('collision', d3.forceCollide(8));
+    .force('collision', d3.forceCollide(7));
 
   const g = svg.append('g');
-
   const link = g.append('g').selectAll('line').data(validLinks)
     .join('line').attr('class', 'graph-link').attr('stroke-width', 1);
 
@@ -429,9 +808,8 @@ function renderGraph(nodes, links) {
     .join('circle')
     .attr('class', 'graph-node')
     .attr('r', d => 3 + d.confidence * 5)
-    .attr('fill', d => color(d))
+    .attr('fill', d => nodeColorMap[d.type] || '#8b949e')
     .attr('opacity', 0.85)
-    .attr('title', d => d.label)
     .call(d3.drag()
       .on('start', (ev, d) => { if (!ev.active) graphSimulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
       .on('drag', (ev, d) => { d.fx = ev.x; d.fy = ev.y; })
@@ -439,26 +817,21 @@ function renderGraph(nodes, links) {
     );
 
   node.append('title').text(d => `${d.label} (${d.type}, ${d.confidence.toFixed(2)})`);
-
   graphSimulation.on('tick', () => {
     link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
         .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
     node.attr('cx', d => Math.max(5, Math.min(W-5, d.x)))
         .attr('cy', d => Math.max(5, Math.min(H-5, d.y)));
   });
-
-  // Zoom
   svg.call(d3.zoom().scaleExtent([0.3, 3]).on('zoom', ev => g.attr('transform', ev.transform)));
 
-  // Legend
   const types = [...new Set(nodes.map(n => n.type))].slice(0, 6);
-  const legend = document.getElementById('graph-legend');
-  legend.innerHTML = types.map(t =>
-    `<span style="color:${color({type:t})};font-size:.65rem">● ${t}</span>`
+  document.getElementById('graph-legend').innerHTML = types.map(t =>
+    `<span style="color:${nodeColorMap[t]||'#8b949e'};font-size:.62rem">● ${t}</span>`
   ).join(' ');
 }
 
-// ── Ingest ─────────────────────────────────────────────────────────────────────
+// ── Ingest text ───────────────────────────────────────────────────────────────
 document.getElementById('ingest-btn').addEventListener('click', async () => {
   const input = document.getElementById('ingest-input');
   const text = input.value.trim();
@@ -476,7 +849,7 @@ document.getElementById('ingest-btn').addEventListener('click', async () => {
   } catch (e) { showToast('Ingest failed', 'red'); }
 });
 
-// ── UI helpers ────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function toggleSection(id) {
   const el = document.getElementById(id);
   if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
@@ -496,9 +869,469 @@ function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+//  VOICE MODE
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── Blob Animator ─────────────────────────────────────────────────────────────
+class VoiceBlob {
+  constructor(canvas) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+    this.N = 12;           // control points
+    this.t = 0;            // time counter
+    this.state = 'idle';   // idle | listening | thinking | speaking
+    this.amp = 0;          // 0–1, smoothed audio amplitude
+    this.targetAmp = 0;
+    this._raf = null;
+
+    // Per-point phase offsets for organic feel
+    this.phases = Array.from({length: this.N}, () => Math.random() * Math.PI * 2);
+
+    // Color lerp state (current → target)
+    this._colorFrom = [108, 40, 180];  // idle purple
+    this._colorTo   = [108, 40, 180];
+    this._colorT = 1;
+    this._colorDur = 0.4;
+
+    this._resize();
+    window.addEventListener('resize', () => this._resize());
+  }
+
+  _resize() {
+    const wrap = this.canvas.parentElement;
+    const size = Math.min(wrap.offsetWidth, wrap.offsetHeight);
+    this.canvas.width  = size;
+    this.canvas.height = size;
+    this.CX = size / 2;
+    this.CY = size / 2;
+    this.BASE_R = size * 0.30;
+  }
+
+  setState(state) {
+    if (this.state === state) return;
+    this.state = state;
+
+    // Color targets per state
+    const colors = {
+      idle:      [108, 40, 180],
+      listening: [8,  145, 178],
+      thinking:  [180, 100, 10],
+      speaking:  [168, 30, 120],
+    };
+    this._colorFrom = this._getCurrentColor();
+    this._colorTo   = colors[state] || colors.idle;
+    this._colorT = 0;
+  }
+
+  _getCurrentColor() {
+    const t = Math.min(this._colorT, 1);
+    return this._colorFrom.map((a, i) => Math.round(a + (this._colorTo[i] - a) * t));
+  }
+
+  setAmplitude(a) { this.targetAmp = Math.max(0, Math.min(1, a)); }
+
+  _stateConfig() {
+    const a = this.amp;
+    switch (this.state) {
+      case 'listening': return { wobble: 0.10, speed: 1.4, radScale: 1.05, extraFreq: 0 };
+      case 'thinking':  return { wobble: 0.20, speed: 2.8, radScale: 1.02, extraFreq: 3 };
+      case 'speaking':  return { wobble: 0.14 + a * 0.30, speed: 2.0, radScale: 1.04 + a * 0.12, extraFreq: 0 };
+      default:          return { wobble: 0.05, speed: 0.5, radScale: 1.00, extraFreq: 0 };
+    }
+  }
+
+  _draw() {
+    const { canvas, ctx, CX, CY, BASE_R, N, phases, t } = this;
+    const W = canvas.width, H = canvas.height;
+
+    // Smooth amplitude
+    this.amp += (this.targetAmp - this.amp) * 0.12;
+
+    // Advance color lerp
+    if (this._colorT < 1) this._colorT = Math.min(1, this._colorT + 0.025);
+
+    const cfg  = this._stateConfig();
+    const R    = BASE_R * cfg.radScale;
+    const step = (Math.PI * 2) / N;
+
+    // Build blob control points
+    const pts = phases.map((ph, i) => {
+      const base  = step * i - Math.PI / 2;
+      const w1    = Math.sin(t * cfg.speed + ph) * cfg.wobble;
+      const w2    = cfg.extraFreq
+        ? Math.sin(t * cfg.extraFreq + ph * 1.7) * cfg.wobble * 0.5
+        : 0;
+      const wAmp  = this.state === 'speaking'
+        ? Math.sin(t * 9 + i * 1.9) * this.amp * 0.20
+        : 0;
+      const r = R * (1 + w1 + w2 + wAmp);
+      return { x: CX + Math.cos(base) * r, y: CY + Math.sin(base) * r };
+    });
+
+    ctx.clearRect(0, 0, W, H);
+
+    // Draw smooth blob
+    ctx.beginPath();
+    for (let i = 0; i < N; i++) {
+      const c = pts[i], nx = pts[(i + 1) % N];
+      const mx = (c.x + nx.x) / 2, my = (c.y + nx.y) / 2;
+      if (i === 0) ctx.moveTo(mx, my);
+      ctx.quadraticCurveTo(c.x, c.y, mx, my);
+    }
+    ctx.closePath();
+
+    // Radial gradient fill
+    const col = this._getCurrentColor();
+    const colStr  = `rgb(${col[0]},${col[1]},${col[2]})`;
+    const colBright = `rgb(${Math.min(255,col[0]+70)},${Math.min(255,col[1]+50)},${Math.min(255,col[2]+80)})`;
+    const grd = ctx.createRadialGradient(CX, CY - R * 0.2, 0, CX, CY, R * 1.35);
+    grd.addColorStop(0, colBright);
+    grd.addColorStop(1, colStr);
+    ctx.fillStyle = grd;
+
+    // Glow
+    const glowAmt = 22 + this.amp * 55 + (this.state === 'speaking' ? 20 : 0);
+    ctx.shadowColor  = colBright;
+    ctx.shadowBlur   = glowAmt;
+    ctx.fill();
+
+    // Inner highlight (specular)
+    ctx.shadowBlur = 0;
+    const hgrd = ctx.createRadialGradient(CX - R * 0.3, CY - R * 0.35, 0, CX, CY, R * 0.8);
+    hgrd.addColorStop(0, 'rgba(255,255,255,0.18)');
+    hgrd.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = hgrd;
+    ctx.fill();
+
+    this.t += 0.016;
+    this._raf = requestAnimationFrame(() => this._draw());
+  }
+
+  start() { if (!this._raf) this._draw(); }
+  stop()  { if (this._raf) { cancelAnimationFrame(this._raf); this._raf = null; } }
+}
+
+// ── TTS Engine ────────────────────────────────────────────────────────────────
+class TTSEngine {
+  constructor() {
+    this.provider = 'browser';
+    this.audioCtx = null;
+    this.analyser = null;
+    this._ampTimer = null;
+    this.onAmplitude = () => {};  // callback(0-1)
+    this.onStart = () => {};
+    this.onEnd   = () => {};
+  }
+
+  async init() {
+    try {
+      const r = await fetch(`${BASE}/api/voice/config`);
+      const d = await r.json();
+      this.provider = d.provider;
+      document.getElementById('voice-provider-badge').textContent = d.provider + ' tts';
+    } catch { this.provider = 'browser'; }
+  }
+
+  async speak(text) {
+    if (!text.trim()) return;
+    window.speechSynthesis && window.speechSynthesis.cancel();
+
+    if (this.provider !== 'browser') {
+      const ok = await this._speakBackend(text);
+      if (ok) return;
+    }
+    this._speakBrowser(text);
+  }
+
+  async _speakBackend(text) {
+    try {
+      const r = await fetch(`${BASE}/api/voice/tts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+      if (r.status !== 200) return false;
+
+      const arrayBuffer = await r.arrayBuffer();
+
+      // Decode and play with amplitude analysis
+      if (!this.audioCtx || this.audioCtx.state === 'closed') {
+        this.audioCtx = new AudioContext();
+      }
+      if (this.audioCtx.state === 'suspended') await this.audioCtx.resume();
+
+      const buffer = await this.audioCtx.decodeAudioData(arrayBuffer);
+      const source  = this.audioCtx.createBufferSource();
+      const analyser = this.audioCtx.createAnalyser();
+      analyser.fftSize = 64;
+      source.buffer = buffer;
+      source.connect(analyser);
+      analyser.connect(this.audioCtx.destination);
+
+      this.onStart();
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      let playing = true;
+
+      const tick = () => {
+        if (!playing) return;
+        analyser.getByteFrequencyData(data);
+        const avg = data.reduce((a, b) => a + b, 0) / data.length / 255;
+        this.onAmplitude(avg);
+        this._ampTimer = requestAnimationFrame(tick);
+      };
+      tick();
+
+      source.onended = () => {
+        playing = false;
+        cancelAnimationFrame(this._ampTimer);
+        this.onAmplitude(0);
+        this.onEnd();
+      };
+      source.start();
+      return true;
+    } catch { return false; }
+  }
+
+  _speakBrowser(text) {
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.rate  = 1.0;
+    utter.pitch = 1.0;
+
+    // Simulate amplitude with fake speech rhythm
+    let fakeT = 0;
+    this.onStart();
+    const tick = () => {
+      fakeT += 0.08;
+      const fakeAmp = 0.25 + Math.sin(fakeT * 6.3) * 0.12 + Math.sin(fakeT * 2.7) * 0.08;
+      this.onAmplitude(Math.max(0, fakeAmp));
+      this._ampTimer = requestAnimationFrame(tick);
+    };
+    tick();
+
+    utter.onend = () => {
+      cancelAnimationFrame(this._ampTimer);
+      this.onAmplitude(0);
+      this.onEnd();
+    };
+    window.speechSynthesis.speak(utter);
+  }
+
+  stop() {
+    window.speechSynthesis && window.speechSynthesis.cancel();
+    cancelAnimationFrame(this._ampTimer);
+    this.onAmplitude(0);
+  }
+}
+
+// ── STT Engine ────────────────────────────────────────────────────────────────
+class STTEngine {
+  constructor() {
+    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    this.supported = !!SpeechRec;
+    if (!this.supported) return;
+
+    this.rec = new SpeechRec();
+    this.rec.continuous  = false;
+    this.rec.interimResults = true;
+    this.rec.lang = 'en-US';
+    this.active = false;
+
+    this.onInterim = () => {};
+    this.onFinal   = () => {};
+    this.onEnd     = () => {};
+    this.onError   = () => {};
+
+    this.rec.onresult = (e) => {
+      const parts = Array.from(e.results).map(r => r[0].transcript);
+      const text  = parts.join('');
+      const isFinal = e.results[e.results.length - 1].isFinal;
+      if (isFinal) {
+        this.onFinal(text);
+      } else {
+        this.onInterim(text);
+      }
+    };
+    this.rec.onerror = (e) => { this.active = false; this.onError(e.error); };
+    this.rec.onend   = ()  => { this.active = false; this.onEnd(); };
+  }
+
+  start() {
+    if (!this.supported || this.active) return;
+    try { this.rec.start(); this.active = true; } catch {}
+  }
+
+  stop() {
+    if (!this.supported || !this.active) return;
+    try { this.rec.stop(); } catch {}
+  }
+}
+
+// ── Voice Mode Controller ─────────────────────────────────────────────────────
+const voiceBlob  = new VoiceBlob(document.getElementById('blob-canvas'));
+const ttsEngine  = new TTSEngine();
+const sttEngine  = new STTEngine();
+
+let voiceOpen       = false;
+let voiceState      = 'idle';   // idle | listening | thinking | speaking
+let pendingResponse = '';       // agent response waiting for TTS
+let autoListen      = false;    // re-listen after speaking
+
+function setVoiceState(state) {
+  voiceState = state;
+  voiceBlob.setState(state);
+
+  const statusEl = document.getElementById('voice-status');
+  const micBtn   = document.getElementById('voice-mic-btn');
+  const rings    = document.getElementById('pulse-rings');
+
+  const labels = { idle: 'READY', listening: 'LISTENING…', thinking: 'THINKING…', speaking: 'SPEAKING…' };
+  const colors = { idle: 'rgba(255,255,255,.35)', listening: '#22d3ee', thinking: '#fbbf24', speaking: '#f472b6' };
+
+  statusEl.textContent  = labels[state] || 'READY';
+  statusEl.style.color  = colors[state] || colors.idle;
+  rings.classList.toggle('active', state === 'listening');
+
+  micBtn.classList.toggle('listening', state === 'listening');
+  micBtn.classList.toggle('disabled',  state === 'thinking' || state === 'speaking');
+}
+
+function openVoiceMode() {
+  voiceOpen = true;
+  document.getElementById('voice-overlay').classList.add('active');
+  voiceBlob.start();
+  setVoiceState('idle');
+  ttsEngine.init();
+  document.getElementById('voice-user-text').textContent  = '';
+  document.getElementById('voice-agent-text').textContent = '';
+
+  if (!sttEngine.supported) {
+    document.getElementById('voice-stt-unsupported').style.display = 'block';
+  }
+}
+
+function closeVoiceMode() {
+  voiceOpen = false;
+  document.getElementById('voice-overlay').classList.remove('active');
+  voiceBlob.stop();
+  ttsEngine.stop();
+  sttEngine.stop();
+  setVoiceState('idle');
+}
+
+// Wire TTS callbacks
+ttsEngine.onAmplitude = (a) => voiceBlob.setAmplitude(a);
+ttsEngine.onStart     = ()  => setVoiceState('speaking');
+ttsEngine.onEnd       = ()  => {
+  setVoiceState('idle');
+  // Auto-resume listening after agent finishes speaking
+  if (voiceOpen && autoListen) {
+    setTimeout(() => { if (voiceOpen && voiceState === 'idle') startListening(); }, 500);
+  }
+};
+
+// Wire STT callbacks
+sttEngine.onInterim = (text) => {
+  document.getElementById('voice-user-text').textContent = text;
+};
+sttEngine.onFinal = (text) => {
+  document.getElementById('voice-user-text').textContent = text;
+  if (text.trim() && wsReady) {
+    setVoiceState('thinking');
+    document.getElementById('voice-agent-text').textContent = '';
+    // Send via existing WebSocket — response comes back in handleDone
+    ws.send(JSON.stringify({ type: 'chat', message: text }));
+  }
+};
+sttEngine.onEnd = () => {
+  if (voiceState === 'listening') setVoiceState('idle');
+};
+sttEngine.onError = (err) => {
+  if (voiceState === 'listening') setVoiceState('idle');
+};
+
+function startListening() {
+  if (!sttEngine.supported || voiceState === 'speaking' || voiceState === 'thinking') return;
+  setVoiceState('listening');
+  sttEngine.start();
+}
+
+function stopListening() {
+  sttEngine.stop();
+  if (voiceState === 'listening') setVoiceState('idle');
+}
+
+// Hook into existing WebSocket done handler to speak responses in voice mode
+const _origHandleDone = handleDone;
+window.handleDone = function(data) {
+  _origHandleDone(data);
+  if (voiceOpen && data.response) {
+    // Strip markdown for cleaner speech
+    const plain = data.response
+      .replace(/```[\s\S]*?```/g, ' code block. ')
+      .replace(/`([^`]+)`/g, '$1')
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/\*([^*]+)\*/g, '$1')
+      .replace(/^#{1,6}\s+/gm, '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/\n{2,}/g, '. ')
+      .replace(/\n/g, ' ')
+      .trim();
+
+    document.getElementById('voice-agent-text').textContent = data.response.substring(0, 180) + (data.response.length > 180 ? '…' : '');
+    ttsEngine.speak(plain);
+  }
+};
+// Reassign so existing code still calls our wrapped version
+ws && (ws.onmessage = e => {
+  const data = JSON.parse(e.data);
+  if (data.type === 'token') handleToken(data.token);
+  else if (data.type === 'done') window.handleDone(data);
+  else if (data.type === 'error') handleError(data.message);
+});
+
+// Button wiring
+document.getElementById('voice-open-btn').addEventListener('click', openVoiceMode);
+document.getElementById('voice-close-btn').addEventListener('click', closeVoiceMode);
+document.getElementById('voice-end-btn').addEventListener('click', closeVoiceMode);
+
+document.getElementById('voice-mic-btn').addEventListener('click', () => {
+  if (voiceState === 'listening') {
+    autoListen = false;
+    stopListening();
+  } else if (voiceState === 'idle') {
+    autoListen = true;
+    startListening();
+  }
+});
+
+// Keyboard: Space to toggle mic when voice mode is open
+document.addEventListener('keydown', (e) => {
+  if (!voiceOpen) return;
+  if (e.code === 'Space' && e.target.tagName !== 'TEXTAREA' && e.target.tagName !== 'INPUT') {
+    e.preventDefault();
+    if (voiceState === 'listening') { autoListen = false; stopListening(); }
+    else if (voiceState === 'idle') { autoListen = true; startListening(); }
+  }
+  if (e.code === 'Escape') closeVoiceMode();
+});
+
+// Patch ws.onmessage after reconnect too
+const _origConnect = connect;
+window._patchWsVoice = function() {
+  if (!ws) return;
+  ws.onmessage = e => {
+    const data = JSON.parse(e.data);
+    if (data.type === 'token') handleToken(data.token);
+    else if (data.type === 'done') window.handleDone(data);
+    else if (data.type === 'error') handleError(data.message);
+  };
+};
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 connect();
-setInterval(loadStats, 10000); // refresh stats every 10s
+setInterval(loadStats, 15000);
+setInterval(loadSessions, 30000);
 </script>
 </body>
 </html>

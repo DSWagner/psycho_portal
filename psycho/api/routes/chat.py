@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+import shutil
+import tempfile
+from pathlib import Path
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request, UploadFile, File
 from fastapi.responses import JSONResponse
 
 from psycho.api.schemas import ChatRequest, ChatResponse, IngestRequest, IngestResponse
@@ -56,6 +59,57 @@ async def stats(request: Request):
     """Get agent statistics."""
     agent = request.app.state.agent
     return await agent.get_stats()
+
+
+@router.get("/sessions")
+async def get_sessions(request: Request, limit: int = 30):
+    """List all past sessions."""
+    agent = request.app.state.agent
+    sessions = await agent.memory.long_term.get_sessions(limit=limit)
+    return {"sessions": sessions}
+
+
+@router.get("/sessions/{session_id}/messages")
+async def get_session_messages(session_id: str, request: Request):
+    """Get all messages for a specific session."""
+    agent = request.app.state.agent
+    messages = await agent.memory.long_term.get_interactions_for_session(session_id)
+    return {"messages": messages, "session_id": session_id}
+
+
+@router.post("/upload")
+async def upload_file(request: Request, file: UploadFile = File(...)):
+    """Upload a file and ingest it into the knowledge graph."""
+    from psycho.knowledge.ingestion import SUPPORTED_EXTENSIONS
+
+    agent = request.app.state.agent
+    suffix = Path(file.filename).suffix.lower()
+
+    if suffix not in SUPPORTED_EXTENSIONS:
+        return JSONResponse(
+            status_code=400,
+            content={"error": f"Unsupported file type: {suffix}. Supported: {', '.join(sorted(SUPPORTED_EXTENSIONS))}"},
+        )
+
+    # Write upload to a temp file, ingest it, then clean up
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            shutil.copyfileobj(file.file, tmp)
+            tmp_path = tmp.name
+
+        result = await agent.ingest_file(tmp_path)
+        return {
+            "filename": file.filename,
+            "nodes_added": result.get("nodes_added", 0),
+            "facts_added": result.get("facts_added", 0),
+            "edges_added": result.get("edges_added", 0),
+            "chunks": result.get("chunks", 0),
+            "errors": result.get("errors", []),
+        }
+    finally:
+        if tmp_path:
+            Path(tmp_path).unlink(missing_ok=True)
 
 
 # ── WebSocket streaming ───────────────────────────────────────────────────────

@@ -42,6 +42,21 @@ class Settings(BaseSettings):
     extraction_enabled: bool = Field(default=True)
     reflection_enabled: bool = Field(default=True)
 
+    # ── TTS (Text-to-Speech) ──────────────────────────────────────
+    tts_provider: str = Field(
+        default="browser",
+        description="'openai', 'elevenlabs', or 'browser' (browser = Web Speech API)",
+    )
+    openai_api_key: str = Field(default="", description="OpenAI API key (used for TTS)")
+    tts_voice: str = Field(
+        default="alloy",
+        description="TTS voice name. OpenAI: alloy/echo/fable/onyx/nova/shimmer. ElevenLabs: voice ID.",
+    )
+    elevenlabs_api_key: str = Field(default="", description="ElevenLabs API key")
+    elevenlabs_voice_id: str = Field(
+        default="21m00Tcm4TlvDq8ikWAM", description="ElevenLabs voice ID (default: Rachel)"
+    )
+
     # ── API Server ────────────────────────────────────────────────
     api_host: str = Field(default="0.0.0.0")
     api_port: int = Field(default=8000)

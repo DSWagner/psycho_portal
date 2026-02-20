@@ -178,6 +178,27 @@ class LongTermMemory:
         rows = await self._db.fetch_all("SELECT key, value FROM preferences")
         return {row["key"]: row["value"] for row in rows}
 
+    async def get_sessions(self, limit: int = 30) -> list[dict]:
+        """List all past sessions ordered by most recent."""
+        rows = await self._db.fetch_all(
+            """SELECT id, started_at, ended_at, message_count, summary, domain
+               FROM sessions ORDER BY started_at DESC LIMIT ?""",
+            (limit,),
+        )
+        return [dict(row) for row in rows]
+
+    async def get_interactions_for_session(
+        self, session_id: str, limit: int = 200
+    ) -> list[dict]:
+        """Get all interactions for a specific session in chronological order."""
+        rows = await self._db.fetch_all(
+            """SELECT user_message, agent_response, domain, timestamp
+               FROM interactions WHERE session_id=?
+               ORDER BY timestamp ASC LIMIT ?""",
+            (session_id, limit),
+        )
+        return [dict(row) for row in rows]
+
     # ── Stats ─────────────────────────────────────────────────────
 
     async def get_stats(self) -> dict:

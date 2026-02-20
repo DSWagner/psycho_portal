@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, AsyncIterator
@@ -180,10 +181,72 @@ class AgentLoop:
             )
         )
 
+    # ── Agent name resolution ──────────────────────────────────────
+
+    def _get_agent_name(self) -> str:
+        """
+        Return the agent's current name.
+        Checks graph for a stored 'agent_name' preference first; falls back to AGENT_NAME.
+        """
+        try:
+            from psycho.knowledge.schema import NodeType
+            prefs = self._graph.find_nodes_by_type(NodeType.PREFERENCE)
+            for p in prefs:
+                if p.label.startswith("agent_name:") and not p.deprecated:
+                    return p.properties.get("value", AGENT_NAME)
+        except Exception:
+            pass
+        return AGENT_NAME
+
+    def _detect_agent_name_assignment(self, user_message: str) -> str | None:
+        """
+        Detect patterns like 'your name is Raz', 'call you Raz', 'from now on you are Raz'.
+        Returns the new name if detected, else None.
+        """
+        patterns = [
+            r"your name is\s+([A-Za-z][A-Za-z0-9_-]{0,30})",
+            r"call you\s+([A-Za-z][A-Za-z0-9_-]{0,30})",
+            r"you(?:'re| are) (?:now |called )?([A-Za-z][A-Za-z0-9_-]{0,30})",
+            r"from now on[,.]?\s+(?:you(?:'re| are)|your name is)\s+([A-Za-z][A-Za-z0-9_-]{0,30})",
+            r"(?:name|call) (?:you|yourself)\s+([A-Za-z][A-Za-z0-9_-]{0,30})",
+        ]
+        msg_lower = user_message.lower()
+        for pattern in patterns:
+            m = re.search(pattern, msg_lower)
+            if m:
+                name = m.group(1).strip().capitalize()
+                # Ignore common false positives
+                if name.lower() not in {"a", "an", "the", "my", "your", "their", "its", "our"}:
+                    return name
+        return None
+
+    def _store_agent_name(self, name: str) -> None:
+        """Persist the agent name as a high-confidence preference node in the graph."""
+        try:
+            from psycho.knowledge.schema import KnowledgeNode, NodeType
+            node = KnowledgeNode(
+                label=f"agent_name:{name.lower()}",
+                type=NodeType.PREFERENCE,
+                domain="general",
+                confidence=0.95,
+                properties={"value": name},
+                source="user_assignment",
+            )
+            self._graph.upsert_node(node)
+            self._graph.save()
+            logger.info(f"Agent name stored: {name}")
+        except Exception as e:
+            logger.warning(f"Could not store agent name: {e}")
+
     # ── Context preparation (shared by process + stream_process) ──
 
     async def _prepare_context(self, ctx: AgentContext) -> None:
         """Build full context before LLM call: classify, signals, retrieval."""
+        # -1. Detect agent name assignment before anything else
+        new_name = self._detect_agent_name_assignment(ctx.user_message)
+        if new_name:
+            self._store_agent_name(new_name)
+
         # 0. Domain classification
         if self._domain_router:
             ctx.domain = await self._domain_router.classify(ctx.user_message)
@@ -222,7 +285,8 @@ class AgentLoop:
         # Build user profile from graph preferences + known facts
         user_profile = self._build_user_profile()
 
-        base = SYSTEM_PROMPT_BASE.format(name=AGENT_NAME, user_profile=user_profile)
+        agent_name = self._get_agent_name()
+        base = SYSTEM_PROMPT_BASE.format(name=agent_name, user_profile=user_profile)
         parts = [base]
 
         # Datetime

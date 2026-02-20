@@ -15,6 +15,7 @@ from psycho.api.routes.chat import router as chat_router, ws_chat_handler
 from psycho.api.routes.graph import router as graph_router
 from psycho.api.routes.health_metrics import router as health_router
 from psycho.api.routes.tasks import router as tasks_router
+from psycho.api.routes.voice import router as voice_router
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -60,6 +61,7 @@ def create_app() -> FastAPI:
     app.include_router(graph_router)
     app.include_router(health_router)
     app.include_router(tasks_router)
+    app.include_router(voice_router)
 
     # WebSocket streaming
     @app.websocket("/ws/chat")

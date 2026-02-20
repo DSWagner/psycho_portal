@@ -31,8 +31,19 @@ SUPPORTED_EXTENSIONS = {
     ".sh", ".bash", ".zsh", ".fish",
     # Data
     ".json", ".yaml", ".yml", ".toml", ".csv", ".xml",
-    # PDF (optional)
+    # PDF
     ".pdf",
+    # Images (vision-extracted)
+    ".png", ".jpg", ".jpeg", ".gif", ".webp",
+}
+
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+IMAGE_MEDIA_TYPES = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
 }
 
 # Chunk sizes
@@ -241,6 +252,9 @@ class IngestionPipeline:
         ext = path.suffix.lower()
         metadata = {}
 
+        if ext in IMAGE_EXTENSIONS:
+            return await self._extract_image(path)
+
         if ext == ".pdf":
             return await self._extract_pdf(path)
 
@@ -269,6 +283,45 @@ class IngestionPipeline:
             text = path.read_text(encoding="utf-8", errors="replace")
             return text, metadata
         except Exception as e:
+            return "", {"error": str(e)}
+
+    async def _extract_image(self, path: Path) -> tuple[str, dict]:
+        """Extract all knowledge from an image using Claude vision."""
+        try:
+            llm = self._extractor._llm
+            if not hasattr(llm, "complete_with_image"):
+                return "", {"error": "Vision not supported by current LLM provider (Anthropic only)"}
+
+            image_data = path.read_bytes()
+            media_type = IMAGE_MEDIA_TYPES.get(path.suffix.lower(), "image/jpeg")
+
+            prompt = (
+                "Analyze this image completely and extract ALL knowledge from it.\n\n"
+                "Cover everything:\n"
+                "1. All visible text — read every word, number, label, caption exactly as written\n"
+                "2. Diagrams, charts, graphs — describe what they show and what data they contain\n"
+                "3. Screenshots of code or terminals — transcribe the code/output verbatim\n"
+                "4. People, objects, scenes — describe with full detail\n"
+                "5. UI/interfaces — describe every element, button, and label\n"
+                "6. Mathematical formulas or symbols — describe them precisely\n"
+                "7. Any relationships, patterns, or conclusions that can be inferred\n\n"
+                "Be exhaustive. Every piece of information matters for a knowledge graph."
+            )
+
+            description = await llm.complete_with_image(
+                image_data=image_data,
+                media_type=media_type,
+                prompt=prompt,
+            )
+
+            return description, {
+                "format": "image",
+                "media_type": media_type,
+                "size_bytes": len(image_data),
+                "vision_extracted": True,
+            }
+        except Exception as e:
+            logger.error(f"Image extraction failed for {path}: {e}")
             return "", {"error": str(e)}
 
     def _extract_python(self, path: Path) -> tuple[str, dict]:

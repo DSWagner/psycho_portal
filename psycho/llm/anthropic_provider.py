@@ -88,6 +88,38 @@ class AnthropicProvider(LLMProvider):
             async for text in stream.text_stream:
                 yield text
 
+    async def complete_with_image(
+        self,
+        image_data: bytes,
+        media_type: str,
+        prompt: str,
+        system: str = "",
+        max_tokens: int = 2048,
+    ) -> str:
+        """Extract knowledge from an image using Claude vision."""
+        import base64
+        b64 = base64.standard_b64encode(image_data).decode("utf-8")
+        response = await self._client.messages.create(
+            model=self._model,
+            max_tokens=max_tokens,
+            system=system or "You are a precise knowledge extractor. Be exhaustive and factual.",
+            messages=[{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": media_type,
+                            "data": b64,
+                        },
+                    },
+                    {"type": "text", "text": prompt},
+                ],
+            }],
+        )
+        return response.content[0].text if response.content else ""
+
     async def embed(self, text: str) -> list[float]:
         # Anthropic doesn't expose a standalone embedding endpoint in the SDK yet.
         # Phase 2 will add sentence-transformers as the local embedding backend.

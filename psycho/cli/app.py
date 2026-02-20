@@ -425,7 +425,8 @@ def serve(host: str, port: int) -> None:
         from psycho.api.server import create_app
 
         app = create_app()
-        console.print(f"[green]Starting PsychoPortal API on http://{host}:{port}[/green]")
+        display_host = "localhost" if host == "0.0.0.0" else host
+        console.print(f"[green]Starting PsychoPortal API on http://{display_host}:{port}[/green]")
         uvicorn.run(app, host=host, port=port)
     except ImportError as e:
         console.print(f"[red]FastAPI/uvicorn not installed: {e}[/red]")
