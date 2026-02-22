@@ -11,6 +11,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
   <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/3d-force-graph@1.73.5/dist/3d-force-graph.min.js"></script>
   <style>
     /* ═══════════════════════════════════════════════════════════════
        PSYCHOPORTAL — Futuristic Dark UI
@@ -466,10 +467,7 @@
     .ge-type-check input { accent-color: var(--accent); }
     .ge-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
     #ge-center { flex: 1; position: relative; overflow: hidden; }
-    #ge-svg { width: 100%; height: 100%; background: transparent; display: block; }
-    .ge-link { stroke: rgba(183,148,244,0.2); stroke-opacity: 1; }
-    .ge-node { cursor: pointer; }
-    .ge-label { font-size: 9px; fill: rgba(226,220,245,.55); pointer-events: none; }
+    #ge-3d { width: 100%; height: 100%; }
     #ge-detail {
       width: 260px; background: rgba(7,7,15,0.7); backdrop-filter: blur(12px);
       border-left: 1px solid var(--border);
@@ -496,6 +494,14 @@
     #img-preview-remove { background: rgba(252,129,129,0.1); border: 1px solid rgba(252,129,129,0.25); color: var(--red); border-radius: 6px; padding: 3px 10px; font-size: .75rem; cursor: pointer; font-family: inherit; transition: all .2s; }
     #img-preview-remove:hover { background: rgba(252,129,129,0.2); }
     .msg-image { max-width: 220px; max-height: 160px; border-radius: 10px; margin-bottom: 6px; display: block; border: 1px solid var(--border); }
+
+    /* ── Document file attachment strip ── */
+    #doc-preview-strip { display: none; padding: 6px 0 4px; gap: 8px; align-items: center; }
+    #doc-preview-strip.show { display: flex; }
+    #doc-preview-icon { font-size: 1.2rem; flex-shrink: 0; }
+    #doc-preview-name { font-size: .8rem; color: var(--accent); font-family: 'Space Mono', monospace; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #doc-preview-remove { background: rgba(252,129,129,0.1); border: 1px solid rgba(252,129,129,0.25); color: var(--red); border-radius: 6px; padding: 3px 10px; font-size: .75rem; cursor: pointer; font-family: inherit; transition: all .2s; }
+    #doc-preview-remove:hover { background: rgba(252,129,129,0.2); }
 
     /* ── Web search badge ── */
     .search-badge { display: inline-flex; align-items: center; gap: 4px; background: rgba(79,209,197,0.08); border: 1px solid rgba(79,209,197,0.2); color: var(--teal); font-size: .68rem; padding: 2px 8px; border-radius: 10px; margin-top: 6px; }
@@ -648,6 +654,12 @@
         <div id="upload-progress"><div id="upload-fill" style="width:0%"></div></div>
         <span id="upload-status" style="white-space:nowrap">Uploading…</span>
       </div>
+      <!-- Document file attachment (deferred upload) -->
+      <div id="doc-preview-strip">
+        <span id="doc-preview-icon">📄</span>
+        <span id="doc-preview-name"></span>
+        <button id="doc-preview-remove">✕ Remove</button>
+      </div>
       <!-- Image preview (visible when image is pasted/dropped into chat) -->
       <div id="img-preview-strip">
         <img id="img-preview-thumb" src="" alt="preview" />
@@ -738,9 +750,9 @@
       </div>
     </div>
 
-    <!-- Graph SVG -->
+    <!-- 3D Graph -->
     <div id="ge-center">
-      <svg id="ge-svg"></svg>
+      <div id="ge-3d"></div>
     </div>
 
     <!-- Detail panel -->
@@ -879,6 +891,47 @@ function handleError(msg) {
   document.getElementById('send-btn').disabled = false;
   showToast('Error: ' + msg, 'red');
 }
+
+// ── Pending document (deferred file+prompt) ───────────────────────────────────
+let pendingDocFile = null;
+
+const TEXT_EXTENSIONS = new Set([
+  'txt','md','rst','py','js','ts','jsx','tsx','go','rs','java','cpp','c','h',
+  'cs','rb','php','swift','kt','sh','json','yaml','yml','toml','csv','xml',
+  'html','css','sql','r','m','lua','pl','ps1','bat','ini','cfg','log',
+]);
+
+function isTextFile(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  return TEXT_EXTENSIONS.has(ext);
+}
+
+function getFileIcon(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (ext === 'pdf') return '📕';
+  if (['py','js','ts','jsx','tsx','java','cpp','c','h','cs','go','rs','rb','php','swift','kt'].includes(ext)) return '💻';
+  if (['json','yaml','yml','toml','xml','csv'].includes(ext)) return '📊';
+  if (['sh','bat','ps1'].includes(ext)) return '⚙️';
+  if (['md','txt','rst','log'].includes(ext)) return '📝';
+  return '📄';
+}
+
+function setPendingDocFile(file) {
+  pendingDocFile = file;
+  document.getElementById('doc-preview-icon').textContent = getFileIcon(file);
+  document.getElementById('doc-preview-name').textContent = file.name;
+  document.getElementById('doc-preview-strip').classList.add('show');
+  document.getElementById('msg-input').placeholder = `Type a prompt for "${file.name}"… (Enter to send)`;
+  document.getElementById('msg-input').focus();
+}
+
+function clearPendingDocFile() {
+  pendingDocFile = null;
+  document.getElementById('doc-preview-strip').classList.remove('show');
+  document.getElementById('msg-input').placeholder = 'Type a message… (Enter to send) — paste or drop an image to chat with vision';
+}
+
+document.getElementById('doc-preview-remove').addEventListener('click', clearPendingDocFile);
 
 // ── Sending ───────────────────────────────────────────────────────────────────
 function sendMessage() {
@@ -1043,8 +1096,14 @@ document.getElementById('attach-btn').addEventListener('click', () => {
 
 document.getElementById('file-input').addEventListener('change', e => {
   const file = e.target.files[0];
-  if (file) uploadFile(file);
-  e.target.value = ''; // reset so same file can be uploaded again
+  if (file) {
+    if (file.type.startsWith('image/')) {
+      uploadFile(file);
+    } else {
+      setPendingDocFile(file);
+    }
+  }
+  e.target.value = ''; // reset so same file can be selected again
 });
 
 // Drag and drop anywhere on the page
@@ -1059,7 +1118,13 @@ document.addEventListener('drop', e => {
   e.preventDefault();
   document.getElementById('drag-overlay').classList.remove('active');
   const file = e.dataTransfer.files[0];
-  if (file) uploadFile(file);
+  if (file) {
+    if (file.type.startsWith('image/')) {
+      uploadFile(file);
+    } else {
+      setPendingDocFile(file);
+    }
+  }
 });
 
 async function uploadFile(file) {
@@ -1217,10 +1282,10 @@ function renderGraph(nodes, links) {
 
   if (graphSimulation) graphSimulation.stop();
   graphSimulation = d3.forceSimulation(nodes)
-    .force('link', d3.forceLink(validLinks).id(d => d.id).distance(38))
-    .force('charge', d3.forceManyBody().strength(-38))
+    .force('link', d3.forceLink(validLinks).id(d => d.id).distance(55))
+    .force('charge', d3.forceManyBody().strength(-120))
     .force('center', d3.forceCenter(W / 2, H / 2))
-    .force('collision', d3.forceCollide(7));
+    .force('collision', d3.forceCollide(14));
 
   const g = svg.append('g');
   const link = g.append('g').selectAll('line').data(validLinks)
@@ -1812,11 +1877,61 @@ document.getElementById('input-area').addEventListener('drop', (e) => {
   reader.readAsDataURL(file);
 }, true);
 
-// Override sendMessage to handle image
+// Override sendMessage to handle image + document file
 const _origSendMessage = sendMessage;
 window.sendMessage = function() {
+  const input = document.getElementById('msg-input');
+
+  // ── Document file_chat (text read client-side, binary uploaded first) ────
+  if (pendingDocFile && wsReady) {
+    const text = input.value.trim() || `Please analyse and summarise this file.`;
+    if (viewingHistorySession) switchToLive();
+
+    const file = pendingDocFile;
+    clearPendingDocFile();
+    input.value = '';
+    input.style.height = 'auto';
+    document.getElementById('send-btn').disabled = true;
+
+    // Show user bubble with file icon
+    addMessage('user', `📎 ${file.name}\n\n${text}`);
+    scrollBottom();
+
+    if (isTextFile(file)) {
+      // Read text client-side — no upload needed
+      const reader = new FileReader();
+      reader.onload = ev => {
+        ws.send(JSON.stringify({
+          type: 'file_chat',
+          message: text,
+          file_content: ev.target.result,
+          filename: file.name,
+        }));
+      };
+      reader.onerror = () => showToast('Could not read file', 'red');
+      reader.readAsText(file);
+    } else {
+      // Binary file (PDF, etc.) — upload first, then send chat message
+      const formData = new FormData();
+      formData.append('file', file);
+      fetch(`${BASE}/api/upload`, { method: 'POST', body: formData })
+        .then(r => r.json())
+        .then(() => {
+          ws.send(JSON.stringify({
+            type: 'chat',
+            message: `I just uploaded "${file.name}". ${text}`,
+          }));
+        })
+        .catch(err => {
+          showToast('Upload error: ' + err.message, 'red');
+          document.getElementById('send-btn').disabled = false;
+        });
+    }
+    return;
+  }
+
+  // ── Image chat ────────────────────────────────────────────────────────────
   if (pendingImage && wsReady) {
-    const input = document.getElementById('msg-input');
     const text = input.value.trim() || 'Describe and analyse this image.';
 
     if (viewingHistorySession) switchToLive();
@@ -1848,6 +1963,7 @@ window.sendMessage = function() {
     clearPendingImage();
     return;
   }
+
   _origSendMessage();
 };
 
@@ -1879,7 +1995,7 @@ window.handleDone = function(data) {
 // ══════════════════════════════════════════════════════════════════════════════
 
 let explorerData = { nodes: [], links: [] };
-let explorerSim  = null;
+let explorerGraph3D = null;
 let explorerSelectedNode = null;
 const GE_COLORS = {
   concept:'#b794f4', entity:'#f6ad55', preference:'#4fd1c5', fact:'#f6ad55',
@@ -1893,7 +2009,8 @@ function openGraphExplorer() {
 }
 function closeGraphExplorer() {
   document.getElementById('graph-explorer').classList.remove('active');
-  if (explorerSim) { explorerSim.stop(); explorerSim = null; }
+  if (explorerGraph3D) { explorerGraph3D.pauseAnimation(); explorerGraph3D = null; }
+  document.getElementById('ge-3d').innerHTML = '';
 }
 document.getElementById('graph-explorer-btn').addEventListener('click', openGraphExplorer);
 document.getElementById('ge-close-btn').addEventListener('click', closeGraphExplorer);
@@ -1961,80 +2078,49 @@ function renderExplorer() {
     l => filteredIds.has(l.source?.id || l.source) && filteredIds.has(l.target?.id || l.target)
   );
 
-  const svg = d3.select('#ge-svg');
-  svg.selectAll('*').remove();
-  injectSvgGlowFilters(svg);
-
-  const el = document.getElementById('ge-svg');
-  const W = el.clientWidth || 800;
-  const H = el.clientHeight || 600;
+  const container = document.getElementById('ge-3d');
+  if (explorerGraph3D) { explorerGraph3D.pauseAnimation(); explorerGraph3D = null; }
+  container.innerHTML = '';
 
   if (filteredNodes.length === 0) {
-    svg.append('text').attr('x', W/2).attr('y', H/2)
-       .attr('text-anchor', 'middle').attr('fill', '#8b949e').attr('font-size', 14)
-       .text('No nodes match the current filters');
+    container.innerHTML = '<div class="ge-empty" style="padding-top:140px;text-align:center">No nodes match the current filters</div>';
     return;
   }
 
   // Deep-copy for simulation (avoid mutating source)
   const simNodes = filteredNodes.map(n => ({ ...n }));
-  const nodeById  = new Map(simNodes.map(n => [n.id, n]));
-  const simLinks  = filteredLinks
-    .map(l => ({
-      source: nodeById.get(l.source?.id || l.source),
-      target: nodeById.get(l.target?.id || l.target),
-      type: l.type, confidence: l.confidence,
-    }))
-    .filter(l => l.source && l.target);
+  const simLinks  = filteredLinks.map(l => ({
+    source: l.source?.id || l.source,
+    target: l.target?.id || l.target,
+    type: l.type, confidence: l.confidence,
+  }));
 
-  if (explorerSim) explorerSim.stop();
-  explorerSim = d3.forceSimulation(simNodes)
-    .force('link', d3.forceLink(simLinks).id(d => d.id).distance(65))
-    .force('charge', d3.forceManyBody().strength(-80))
-    .force('center', d3.forceCenter(W / 2, H / 2))
-    .force('collision', d3.forceCollide(14));
-
-  const g = svg.append('g');
-
-  // Zoom / pan
-  svg.call(d3.zoom().scaleExtent([0.1, 4]).on('zoom', ev => g.attr('transform', ev.transform)));
-
-  // Links
-  const link = g.append('g').selectAll('line').data(simLinks)
-    .join('line').attr('class', 'ge-link').attr('stroke-width', d => 0.8 + d.confidence * 1.5);
-
-  // Nodes
-  const node = g.append('g').selectAll('g').data(simNodes).join('g')
-    .attr('class', 'ge-node')
-    .call(d3.drag()
-      .on('start', (ev, d) => { if (!ev.active) explorerSim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
-      .on('drag',  (ev, d) => { d.fx = ev.x; d.fy = ev.y; })
-      .on('end',   (ev, d) => { if (!ev.active) explorerSim.alphaTarget(0); d.fx = null; d.fy = null; })
-    )
-    .on('click', (ev, d) => { ev.stopPropagation(); selectExplorerNode(d.id); });
-
-  node.append('circle')
-    .attr('r', d => 5 + d.confidence * 9)
-    .attr('fill', d => GE_COLORS[d.type] || '#7b74a0')
-    .attr('opacity', 0.9)
-    .attr('stroke', d => explorerSelectedNode === d.id ? '#fff' : 'none')
-    .attr('stroke-width', 2)
-    .attr('filter', d => getNodeGlowFilter(d.type));
-
-  node.append('text').attr('class', 'ge-label')
-    .attr('dy', d => -(6 + d.confidence * 9))
-    .attr('text-anchor', 'middle')
-    .text(d => d.label.length > 22 ? d.label.substring(0, 22) + '…' : d.label);
-
-  node.append('title').text(d => `${d.label}\n${d.type} | conf: ${d.confidence.toFixed(2)}`);
-
-  svg.on('click', () => clearExplorerSelection());
-
-  explorerSim.on('tick', () => {
-    link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
-        .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
-    node.attr('transform', d => `translate(${d.x},${d.y})`);
-  });
+  explorerGraph3D = ForceGraph3D()(container)
+    .width(container.clientWidth  || 800)
+    .height(container.clientHeight || 600)
+    .backgroundColor('#07070f')
+    .graphData({ nodes: simNodes, links: simLinks })
+    .nodeId('id')
+    .nodeLabel(n => `${n.label} (${n.type})`)
+    .nodeColor(n => n.id === explorerSelectedNode ? '#ffffff' : (GE_COLORS[n.type] || '#7b74a0'))
+    .nodeVal(n => 2 + n.confidence * 6)
+    .nodeResolution(10)
+    .nodeOpacity(0.9)
+    .linkColor(() => 'rgba(183,148,244,0.2)')
+    .linkWidth(0.6)
+    .linkDirectionalParticles(1)
+    .linkDirectionalParticleWidth(1.5)
+    .linkDirectionalParticleColor(() => '#b794f4')
+    .linkDirectionalParticleSpeed(0.003)
+    .onNodeClick((node, ev) => {
+      ev.stopPropagation();
+      explorerSelectedNode = node.id;
+      selectExplorerNode(node.id);
+      if (explorerGraph3D) explorerGraph3D.nodeColor(
+        n => n.id === explorerSelectedNode ? '#ffffff' : (GE_COLORS[n.type] || '#7b74a0')
+      );
+    })
+    .onBackgroundClick(() => clearExplorerSelection());
 }
 
 async function selectExplorerNode(nodeId) {
@@ -2075,6 +2161,9 @@ async function selectExplorerNode(nodeId) {
 function clearExplorerSelection() {
   explorerSelectedNode = null;
   document.getElementById('ge-detail').innerHTML = '<div class="ge-empty">Click a node to see details</div>';
+  if (explorerGraph3D) explorerGraph3D.nodeColor(
+    n => GE_COLORS[n.type] || '#7b74a0'
+  );
 }
 
 async function deleteExplorerNode(nodeId) {
