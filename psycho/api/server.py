@@ -38,6 +38,21 @@ async def lifespan(app: FastAPI):
     # Start proactive scheduler (background reminders + calendar alerts)
     await agent.start_scheduler()
 
+    # Pre-warm local TTS so first voice response has no cold-start delay
+    from psycho.config import get_settings as _gs
+    _s = _gs()
+    if _s.tts_provider == "local":
+        import asyncio as _asyncio
+        from psycho.api.routes.voice import _get_local_tts
+        async def _warm_tts():
+            try:
+                tts = _get_local_tts()
+                await tts.synthesize("Ready.")
+                logger.info("Local TTS pre-warmed and ready.")
+            except Exception as _e:
+                logger.warning(f"TTS pre-warm skipped: {_e}")
+        _asyncio.create_task(_warm_tts())
+
     logger.info(
         f"Agent ready | session={agent.session_id} | "
         f"model={agent.llm.model_name} | "

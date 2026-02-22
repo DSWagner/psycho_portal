@@ -7,8 +7,9 @@ from fastapi.responses import JSONResponse, Response
 
 router = APIRouter(prefix="/api/voice", tags=["voice"])
 
-# Lazy-loaded local Whisper instance
+# Lazy-loaded singletons — created once, reused for all requests
 _whisper_stt = None
+_local_tts = None
 
 
 def _get_whisper():
@@ -19,6 +20,16 @@ def _get_whisper():
         s = get_settings()
         _whisper_stt = LocalWhisperSTT.from_settings(s)
     return _whisper_stt
+
+
+def _get_local_tts():
+    global _local_tts
+    if _local_tts is None:
+        from psycho.config import get_settings
+        from psycho.llm.local_tts import LocalTTSProvider
+        s = get_settings()
+        _local_tts = LocalTTSProvider.from_settings(s)
+    return _local_tts
 
 
 @router.get("/config")
@@ -114,8 +125,7 @@ async def text_to_speech(request_body: dict):
     # ── Local TTS ─────────────────────────────────────────────────
     if s.tts_provider == "local":
         try:
-            from psycho.llm.local_tts import LocalTTSProvider
-            tts = LocalTTSProvider.from_settings(s)
+            tts = _get_local_tts()
             audio = await tts.synthesize(text)
             if audio:
                 return Response(content=audio, media_type="audio/wav")

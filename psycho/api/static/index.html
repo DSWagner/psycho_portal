@@ -979,6 +979,24 @@ function connect() {
   };
 }
 
+// ── Voice sentence-streaming helpers ─────────────────────────────────────────
+// Accumulates streaming tokens and speaks each complete sentence immediately,
+// so voice and text stay in sync instead of waiting for the full response.
+let _voiceSentBuf = '';
+
+function _stripMdForSpeech(text) {
+  return text
+    .replace(/```[\s\S]*?```/g, ' code block. ')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/\n{2,}/g, '. ')
+    .replace(/\n/g, ' ')
+    .trim();
+}
+
 function handleToken(token) {
   if (!currentStreamDiv) {
     currentStreamDiv = addMessage('agent', '', true);
@@ -987,6 +1005,21 @@ function handleToken(token) {
   currentStreamDiv.querySelector('.msg-bubble').innerHTML =
     renderMd(currentStreamContent) + '<span class="cursor"></span>';
   scrollBottom();
+
+  // Voice mode: extract completed sentences and speak them immediately
+  if (voiceOpen) {
+    _voiceSentBuf += token;
+    // Pull out each complete sentence (ends with . ! ? ; followed by whitespace or end)
+    let m;
+    while ((m = /^([\s\S]*?[.!?;]+)\s+([\s\S]*)$/.exec(_voiceSentBuf)) !== null) {
+      const sentence = _stripMdForSpeech(m[1]);
+      _voiceSentBuf  = m[2];
+      if (sentence && sentence.length >= 8) ttsEngine.speak(sentence);
+    }
+    // Keep voice-panel text in sync with streaming content
+    document.getElementById('voice-agent-text').textContent =
+      currentStreamContent.substring(0, 200) + (currentStreamContent.length > 200 ? '…' : '');
+  }
 }
 
 function handleDone(data) {
@@ -1014,7 +1047,19 @@ function handleDone(data) {
   document.getElementById('send-btn').disabled = false;
   scrollBottom();
   setTimeout(() => { loadStats(); loadTasks(); loadGraph(); loadSessions(); }, 600);
+
+  // Voice mode: speak any text remaining in the sentence buffer (last fragment
+  // that didn't end with punctuation), then update the transcript panel.
+  if (voiceOpen && data.response) {
+    document.getElementById('voice-agent-text').textContent =
+      data.response.substring(0, 180) + (data.response.length > 180 ? '…' : '');
+    const remaining = _stripMdForSpeech(_voiceSentBuf.trim());
+    if (remaining && remaining.length >= 4) ttsEngine.speak(remaining);
+    _voiceSentBuf = '';
+  }
 }
+// Expose so reassigned ws.onmessage handlers can call the same function
+window.handleDone = handleDone;
 
 function handleError(msg) {
   if (currentStreamDiv) {
@@ -1634,118 +1679,135 @@ class VoiceBlob {
 }
 
 // ── TTS Engine ────────────────────────────────────────────────────────────────
+// Queued playback: speak() is non-blocking — it fetches audio immediately and
+// enqueues chunks for sequential play, so voice tracks streaming text in real
+// time rather than waiting for the full response to complete.
 class TTSEngine {
   constructor() {
-    this.provider = 'browser';
-    this.audioCtx = null;
-    this.analyser = null;
+    this.provider     = 'browser';
+    this.voice        = '';
+    this._sttProvider = 'browser';
+    this.audioCtx  = null;
     this._ampTimer = null;
-    this.onAmplitude = () => {};  // callback(0-1)
-    this.onStart = () => {};
-    this.onEnd   = () => {};
+    this._queue    = [];     // queued { type:'audio'|'browser', ... } items
+    this._playing  = false;  // true while a chunk is actively playing
+    this._started  = false;  // has onStart fired for the current batch
+    this.onAmplitude = () => {};
+    this.onStart     = () => {};
+    this.onEnd       = () => {};
   }
 
   async init() {
     try {
       const r = await fetch(`${BASE}/api/voice/config`);
       const d = await r.json();
-      this.provider = d.provider;
-      this.voice    = d.voice || '';
+      this.provider     = d.provider;
+      this.voice        = d.voice || '';
       this._sttProvider = d.stt_provider || 'browser';
     } catch {
-      this.provider = 'browser';
-      this.voice = '';
+      this.provider     = 'browser';
+      this.voice        = '';
       this._sttProvider = 'browser';
     }
   }
 
-  async speak(text) {
+  // Non-blocking: kick off fetch and enqueue for sequential playback
+  speak(text) {
     if (!text.trim()) return;
-    window.speechSynthesis && window.speechSynthesis.cancel();
-
     if (this.provider !== 'browser') {
-      const ok = await this._speakBackend(text);
-      if (ok) return;
+      this._fetchAndEnqueue(text);
+    } else {
+      this._enqueueBrowser(text);
     }
-    this._speakBrowser(text);
   }
 
-  async _speakBackend(text) {
+  // ── Backend TTS (Kokoro / OpenAI / ElevenLabs) ──────────────────────────────
+  async _fetchAndEnqueue(text) {
     try {
       const r = await fetch(`${BASE}/api/voice/tts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text }),
       });
-      if (r.status !== 200) return false;
+      if (r.status !== 200) { this._enqueueBrowser(text); return; }
 
       const arrayBuffer = await r.arrayBuffer();
-
-      // Decode and play with amplitude analysis
       if (!this.audioCtx || this.audioCtx.state === 'closed') {
         this.audioCtx = new AudioContext();
       }
       if (this.audioCtx.state === 'suspended') await this.audioCtx.resume();
-
       const buffer = await this.audioCtx.decodeAudioData(arrayBuffer);
-      const source  = this.audioCtx.createBufferSource();
+      this._queue.push({ type: 'audio', buffer });
+      if (!this._playing) this._playNext();
+    } catch { this._enqueueBrowser(text); }
+  }
+
+  // ── Sequential playback ──────────────────────────────────────────────────────
+  _playNext() {
+    if (!this._queue.length) {
+      this._playing = false;
+      if (this._started) {
+        this._started = false;
+        cancelAnimationFrame(this._ampTimer);
+        this.onAmplitude(0);
+        this.onEnd();
+      }
+      return;
+    }
+    this._playing = true;
+    const item = this._queue.shift();
+
+    if (item.type === 'audio') {
+      if (!this._started) { this._started = true; this.onStart(); }
+      const source   = this.audioCtx.createBufferSource();
       const analyser = this.audioCtx.createAnalyser();
       analyser.fftSize = 64;
-      source.buffer = buffer;
+      source.buffer = item.buffer;
       source.connect(analyser);
       analyser.connect(this.audioCtx.destination);
-
-      this.onStart();
-      const data = new Uint8Array(analyser.frequencyBinCount);
-      let playing = true;
-
+      const freqData = new Uint8Array(analyser.frequencyBinCount);
+      let active = true;
       const tick = () => {
-        if (!playing) return;
-        analyser.getByteFrequencyData(data);
-        const avg = data.reduce((a, b) => a + b, 0) / data.length / 255;
+        if (!active) return;
+        analyser.getByteFrequencyData(freqData);
+        const avg = freqData.reduce((a, b) => a + b, 0) / freqData.length / 255;
         this.onAmplitude(avg);
         this._ampTimer = requestAnimationFrame(tick);
       };
       tick();
-
-      source.onended = () => {
-        playing = false;
-        cancelAnimationFrame(this._ampTimer);
-        this.onAmplitude(0);
-        this.onEnd();
-      };
+      source.onended = () => { active = false; cancelAnimationFrame(this._ampTimer); this._playNext(); };
       source.start();
-      return true;
-    } catch { return false; }
+
+    } else {
+      // browser utterance
+      if (!this._started) { this._started = true; this.onStart(); }
+      let fakeT = 0;
+      const tick = () => {
+        fakeT += 0.08;
+        this.onAmplitude(Math.max(0, 0.25 + Math.sin(fakeT * 6.3) * 0.12 + Math.sin(fakeT * 2.7) * 0.08));
+        this._ampTimer = requestAnimationFrame(tick);
+      };
+      tick();
+      item.utter.onend = () => { cancelAnimationFrame(this._ampTimer); this._playNext(); };
+      window.speechSynthesis.speak(item.utter);
+    }
   }
 
-  _speakBrowser(text) {
+  // ── Browser TTS ─────────────────────────────────────────────────────────────
+  _enqueueBrowser(text) {
     const utter = new SpeechSynthesisUtterance(text);
     utter.rate  = 1.0;
     utter.pitch = 1.0;
-
-    // Simulate amplitude with fake speech rhythm
-    let fakeT = 0;
-    this.onStart();
-    const tick = () => {
-      fakeT += 0.08;
-      const fakeAmp = 0.25 + Math.sin(fakeT * 6.3) * 0.12 + Math.sin(fakeT * 2.7) * 0.08;
-      this.onAmplitude(Math.max(0, fakeAmp));
-      this._ampTimer = requestAnimationFrame(tick);
-    };
-    tick();
-
-    utter.onend = () => {
-      cancelAnimationFrame(this._ampTimer);
-      this.onAmplitude(0);
-      this.onEnd();
-    };
-    window.speechSynthesis.speak(utter);
+    this._queue.push({ type: 'browser', utter });
+    if (!this._playing) this._playNext();
   }
 
   stop() {
     window.speechSynthesis && window.speechSynthesis.cancel();
     cancelAnimationFrame(this._ampTimer);
+    this._queue   = [];
+    this._playing = false;
+    this._started = false;
     this.onAmplitude(0);
   }
 }
@@ -1870,12 +1932,43 @@ sttEngine.onInterim = (text) => {
 };
 sttEngine.onFinal = (text) => {
   document.getElementById('voice-user-text').textContent = text;
-  if (text.trim() && wsReady) {
-    setVoiceState('thinking');
-    document.getElementById('voice-agent-text').textContent = '';
-    // Send via existing WebSocket — response comes back in handleDone
-    ws.send(JSON.stringify({ type: 'chat', message: text }));
+  if (!text.trim() || !wsReady) return;
+
+  const lower = text.toLowerCase().trim().replace(/[.,!?…]+$/, '');
+
+  // ── Built-in voice commands (no round-trip to the agent) ──────────────────
+  if (/^(reset|new conversation|clear (the )?chat|start over|start fresh)$/.test(lower)) {
+    clearMessages();
+    document.getElementById('voice-agent-text').textContent = 'Conversation cleared.';
+    _voiceSentBuf = '';
+    ttsEngine.speak('Starting fresh. What would you like to talk about?');
+    return;
   }
+  if (/^(close|end|stop|exit) (voice|the call|voice mode)$/.test(lower)) {
+    ttsEngine.speak('Closing voice mode.');
+    setTimeout(closeVoiceMode, 1400);
+    return;
+  }
+  if (/^(show|open) (the )?(personality|traits|sliders|personality settings)$/.test(lower)) {
+    openPersonalityPanel();
+    document.getElementById('voice-agent-text').textContent = 'Opening personality settings.';
+    _voiceSentBuf = '';
+    ttsEngine.speak('Opening personality settings.');
+    return;
+  }
+  if (/^(show|open) (the )?(graph|knowledge graph)$/.test(lower)) {
+    document.getElementById('graph-explorer-btn')?.click();
+    document.getElementById('voice-agent-text').textContent = 'Opening graph explorer.';
+    _voiceSentBuf = '';
+    ttsEngine.speak('Opening the knowledge graph.');
+    return;
+  }
+
+  // ── Regular chat — send to agent via WebSocket ─────────────────────────────
+  _voiceSentBuf = '';
+  setVoiceState('thinking');
+  document.getElementById('voice-agent-text').textContent = '';
+  ws.send(JSON.stringify({ type: 'chat', message: text }));
 };
 sttEngine.onEnd = () => {
   if (voiceState === 'listening') setVoiceState('idle');
@@ -1895,32 +1988,11 @@ function stopListening() {
   if (voiceState === 'listening') setVoiceState('idle');
 }
 
-// Hook into existing WebSocket done handler to speak responses in voice mode
-const _origHandleDone = handleDone;
-window.handleDone = function(data) {
-  _origHandleDone(data);
-  if (voiceOpen && data.response) {
-    // Strip markdown for cleaner speech
-    const plain = data.response
-      .replace(/```[\s\S]*?```/g, ' code block. ')
-      .replace(/`([^`]+)`/g, '$1')
-      .replace(/\*\*([^*]+)\*\*/g, '$1')
-      .replace(/\*([^*]+)\*/g, '$1')
-      .replace(/^#{1,6}\s+/gm, '')
-      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-      .replace(/\n{2,}/g, '. ')
-      .replace(/\n/g, ' ')
-      .trim();
-
-    document.getElementById('voice-agent-text').textContent = data.response.substring(0, 180) + (data.response.length > 180 ? '…' : '');
-    ttsEngine.speak(plain);
-  }
-};
-// Reassign so existing code still calls our wrapped version
+// Patch ws.onmessage so the voice-aware handleToken/handleDone are active
 ws && (ws.onmessage = e => {
   const data = JSON.parse(e.data);
   if (data.type === 'token') handleToken(data.token);
-  else if (data.type === 'done') window.handleDone(data);
+  else if (data.type === 'done') handleDone(data);
   else if (data.type === 'error') handleError(data.message);
 });
 
@@ -1950,14 +2022,13 @@ document.addEventListener('keydown', (e) => {
   if (e.code === 'Escape') closeVoiceMode();
 });
 
-// Patch ws.onmessage after reconnect too
-const _origConnect = connect;
+// Re-patch ws.onmessage after reconnect
 window._patchWsVoice = function() {
   if (!ws) return;
   ws.onmessage = e => {
     const data = JSON.parse(e.data);
     if (data.type === 'token') handleToken(data.token);
-    else if (data.type === 'done') window.handleDone(data);
+    else if (data.type === 'done') handleDone(data);
     else if (data.type === 'error') handleError(data.message);
   };
 };
