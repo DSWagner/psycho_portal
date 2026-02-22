@@ -3,8 +3,8 @@
 # ═══════════════════════════════════════════════════════════════
 
 # ── LLM Providers ────────────────────────────────────────────────
-anthropic>=0.40.0            # Claude API (haiku for dev)
-httpx>=0.27.0                # Async HTTP (Ollama + general)
+anthropic>=0.40.0            # Claude API (haiku for dev, swap for sonnet/opus)
+httpx>=0.27.0                # Async HTTP (Ollama + web search)
 
 # ── Knowledge Graph ──────────────────────────────────────────────
 networkx>=3.3                # In-process graph, zero infra, JSON serializable
@@ -29,6 +29,7 @@ prompt_toolkit>=3.0.47       # Input with history, autocomplete, keybindings
 # ── FastAPI Server ───────────────────────────────────────────────
 fastapi>=0.112.0
 uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9      # For file upload endpoints (UploadFile)
 
 # ── Configuration ─────────────────────────────────────────────────
 pydantic>=2.8.0
@@ -39,3 +40,25 @@ python-dotenv>=1.0.1
 tenacity>=9.0.0              # Retry with exponential backoff for LLM calls
 loguru>=0.7.2                # Structured logging
 pendulum>=3.0.0              # Better datetime + timezone handling
+
+# ═══════════════════════════════════════════════════════════════
+# OPTIONAL — Local Model Stack (for fully-offline production use)
+# Install individually as needed. None required for API-mode dev.
+# ═══════════════════════════════════════════════════════════════
+
+# ── Local STT (Speech-to-Text) ───────────────────────────────────
+# Uncomment for local Whisper STT (set STT_PROVIDER=whisper_local in .env)
+# faster-whisper>=1.0.0      # Recommended: faster, lower memory, ONNX-based
+# openai-whisper>=20231117   # Alternative: original OpenAI Whisper
+
+# ── Local TTS (Text-to-Speech) ───────────────────────────────────
+# Uncomment for local TTS (set TTS_PROVIDER=local in .env)
+# pyttsx3>=2.90              # Zero-dependency system TTS (Windows/Mac/Linux)
+# kokoro-onnx>=0.3.0         # High-quality 82M param model (~300MB download)
+# soundfile>=0.12.1          # Required by kokoro-onnx for WAV output
+
+# ── Google Calendar Integration ──────────────────────────────────
+# Uncomment for Google Calendar sync (set GOOGLE_CALENDAR_CREDENTIALS in .env)
+# google-api-python-client>=2.100.0
+# google-auth-oauthlib>=1.0.0
+# google-auth-httplib2>=0.2.0

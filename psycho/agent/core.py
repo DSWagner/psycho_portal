@@ -24,6 +24,11 @@ from psycho.learning.session_journal import SessionJournal
 from psycho.llm import create_provider
 from psycho.llm.base import LLMProvider
 from psycho.memory import MemoryManager
+from psycho.personality.adapter import PersonalityAdapter
+from psycho.proactive.reminders import ReminderManager
+from psycho.proactive.calendar_manager import CalendarManager
+from psycho.proactive.checkin import CheckinEngine
+from psycho.proactive.scheduler import ProactiveScheduler
 from psycho.storage.database import Database
 from psycho.storage.graph_store import GraphStore
 from psycho.storage.vector_store import VectorStore
@@ -34,14 +39,14 @@ from .reflection import ReflectionEngine
 
 class PsychoAgent:
     """
-    Top-level agent class — the full self-evolving system.
+    Top-level agent class — the full self-evolving system with personality.
 
     Subsystems:
         LLM provider         — Anthropic Claude or Ollama (local)
         Memory manager       — 4-tier: short-term, long-term, semantic, episodic
         Knowledge graph      — NetworkX + ChromaDB, self-evolving
         Graph evolver        — confidence updates, dedup, maintenance
-        Knowledge extractor  — LLM-powered entity/relation extraction
+        Knowledge extractor  — LLM-powered entity/relation/personality extraction
         Graph reasoner       — context retrieval for prompt injection
         Ingestion pipeline   — file/text ingestion into the graph
         Mistake tracker      — learns from errors, warns before repeating
@@ -49,6 +54,11 @@ class PsychoAgent:
         Insight generator    — derives insights from graph + session patterns
         Session journal      — writes learning record after each session
         Reflection engine    — post-session synthesis (the self-evolution core)
+        Personality adapter  — TARS/Jarvis-style adjustable personality engine
+        Reminder manager     — smart reminders with natural language parsing
+        Calendar manager     — local calendar with optional Google Calendar sync
+        Checkin engine       — proactive check-ins based on patterns
+        Proactive scheduler  — background async loop for reminders/calendar
         Agent loop           — perceive → think → act → learn cycle
     """
 
@@ -77,9 +87,17 @@ class PsychoAgent:
         self._domain_handlers: dict = {}
         self._loop: AgentLoop | None = None
 
+        # Personality + proactive systems
+        self._personality: PersonalityAdapter | None = None
+        self._reminders: ReminderManager | None = None
+        self._calendar: CalendarManager | None = None
+        self._checkin: CheckinEngine | None = None
+        self._scheduler: ProactiveScheduler | None = None
+
         self._session_id = str(uuid.uuid4())[:8]
         self._session_started_at = time.time()
         self._started = False
+        self._session_count = 0  # Track across restarts via DB
 
     async def start(self) -> None:
         """Initialize all subsystems."""
@@ -135,8 +153,57 @@ class PsychoAgent:
             "general": GeneralHandler(self._db, self._llm),
         }
 
+        # ── Personality engine ─────────────────────────────────────
+        personality_path = self._settings.get_personality_path()
+        if not personality_path.exists():
+            # Create initial personality from settings
+            from psycho.personality.traits import AgentPersonality
+            initial = AgentPersonality.from_dict(
+                self._settings.get_initial_personality_dict()
+            )
+            initial.save(personality_path)
+
+        self._personality = PersonalityAdapter.create(
+            personality_path=personality_path,
+            graph=self._graph,
+        )
+
+        # ── Proactive subsystems ───────────────────────────────────
+        self._reminders = ReminderManager(self._db)
+        self._calendar = CalendarManager(
+            self._db,
+            google_credentials_path=self._settings.google_calendar_credentials or None,
+        )
+        self._checkin = CheckinEngine()
+
+        # Initialize Google Calendar if credentials are configured
+        if self._settings.google_calendar_credentials:
+            try:
+                await self._calendar.try_init_google(
+                    self._settings.google_calendar_credentials
+                )
+            except Exception as e:
+                logger.debug(f"Google Calendar init skipped: {e}")
+
+        # Proactive scheduler (background task — started separately for web mode)
+        self._scheduler = ProactiveScheduler(
+            reminder_manager=self._reminders,
+            calendar_manager=self._calendar,
+            checkin_engine=self._checkin,
+        )
+
         # Session tracking
         await self._memory.long_term.create_session(self._session_id)
+
+        # Count sessions from DB for relationship depth
+        try:
+            row = await self._db.fetch_one("SELECT COUNT(*) FROM sessions")
+            self._session_count = row[0] if row else 1
+        except Exception:
+            self._session_count = 1
+
+        if self._personality:
+            self._personality.increment_session()
 
         # Agent loop (fully wired with all subsystems)
         self._loop = AgentLoop(
@@ -150,6 +217,10 @@ class PsychoAgent:
             mistake_tracker=self._mistake_tracker,
             domain_router=self._domain_router,
             domain_handlers=self._domain_handlers,
+            personality=self._personality,
+            reminder_manager=self._reminders,
+            calendar_manager=self._calendar,
+            checkin_engine=self._checkin,
         )
 
         self._started = True
@@ -157,8 +228,15 @@ class PsychoAgent:
         logger.info(
             f"{AGENT_NAME} started | session={self._session_id} | "
             f"provider={self._llm.provider_name} | model={self._llm.model_name} | "
-            f"graph={g_stats['active_nodes']} nodes, {g_stats['total_edges']} edges"
+            f"graph={g_stats['active_nodes']} nodes, {g_stats['total_edges']} edges | "
+            f"personality={self._personality.get_trait_status() if self._personality else 'default'}"
         )
+
+    async def start_scheduler(self) -> None:
+        """Start the proactive background scheduler (call from FastAPI startup)."""
+        if self._scheduler and self._settings.proactive_enabled:
+            await self._scheduler.start()
+            logger.info("Proactive scheduler started")
 
     async def chat(self, user_message: str) -> str:
         if not self._started:
@@ -233,6 +311,10 @@ class PsychoAgent:
         if not self._started:
             return None
 
+        # Stop background scheduler
+        if self._scheduler and self._scheduler.is_running:
+            await self._scheduler.stop()
+
         reflection_result = None
         if run_reflection and self._reflection:
             reflection_result = await self._reflection.run(
@@ -240,7 +322,6 @@ class PsychoAgent:
                 session_started_at=self._session_started_at,
             )
         else:
-            # Always save graph on exit even without reflection
             if self._graph:
                 self._graph.save()
 
@@ -249,6 +330,13 @@ class PsychoAgent:
 
         if self._db:
             await self._db.close()
+
+        # Save personality state
+        if self._personality and self._settings.get_personality_path():
+            try:
+                self._personality.traits.save(self._settings.get_personality_path())
+            except Exception as e:
+                logger.debug(f"Personality save skipped: {e}")
 
         self._started = False
         logger.info(f"{AGENT_NAME} stopped | session={self._session_id}")
@@ -285,6 +373,22 @@ class PsychoAgent:
         return self._mistake_tracker
 
     @property
+    def personality(self) -> PersonalityAdapter | None:
+        return self._personality
+
+    @property
+    def scheduler(self) -> ProactiveScheduler | None:
+        return self._scheduler
+
+    @property
+    def reminder_manager(self) -> ReminderManager | None:
+        return self._reminders
+
+    @property
+    def calendar_manager(self) -> CalendarManager | None:
+        return self._calendar
+
+    @property
     def settings(self):
         return self._settings
 
@@ -319,4 +423,29 @@ class PsychoAgent:
         if self.health_tracker:
             h = await self.health_tracker.get_stats()
             stats["health_entries"] = h["total_entries"]
+        if self._reminders:
+            r = await self._reminders.get_stats()
+            stats["pending_reminders"] = r["pending"]
+        if self._scheduler:
+            stats["unread_notifications"] = self._scheduler.unread_count
+        if self._personality:
+            stats["personality"] = self._personality.traits.to_dict()
         return stats
+
+    # ── Personality control API ────────────────────────────────────
+
+    def set_personality_trait(self, trait: str, value: float) -> bool:
+        """Directly set a personality trait. Returns True if successful."""
+        if not self._personality:
+            return False
+        success = self._personality.traits.set_trait(trait, value)
+        if success:
+            path = self._settings.get_personality_path()
+            self._personality.traits.save(path)
+        return success
+
+    def get_personality(self) -> dict:
+        """Return current personality trait values."""
+        if not self._personality:
+            return {}
+        return self._personality.traits.to_dict()

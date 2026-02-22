@@ -16,34 +16,45 @@ from psycho.api.routes.graph import router as graph_router
 from psycho.api.routes.health_metrics import router as health_router
 from psycho.api.routes.tasks import router as tasks_router
 from psycho.api.routes.voice import router as voice_router
+from psycho.api.routes.personality import router as personality_router
 
 STATIC_DIR = Path(__file__).parent / "static"
+
+# Global agent reference — imported by route modules that need it
+agent = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize agent on startup, shut down cleanly on exit."""
+    global agent
     from psycho.agent.core import PsychoAgent
 
     logger.info("PsychoPortal API starting…")
     agent = PsychoAgent()
     await agent.start()
     app.state.agent = agent
+
+    # Start proactive scheduler (background reminders + calendar alerts)
+    await agent.start_scheduler()
+
     logger.info(
         f"Agent ready | session={agent.session_id} | "
-        f"model={agent.llm.model_name}"
+        f"model={agent.llm.model_name} | "
+        f"personality={agent.personality.get_trait_status() if agent.personality else 'default'}"
     )
     yield
     # Shutdown
     logger.info("PsychoPortal API shutting down…")
     await agent.stop(run_reflection=True)
+    agent = None
 
 
 def create_app() -> FastAPI:
     app = FastAPI(
         title="PsychoPortal API",
-        description="Self-evolving AI personal assistant",
-        version="0.1.0",
+        description="Self-evolving AI personal assistant with TARS/Jarvis personality",
+        version="0.2.0",
         lifespan=lifespan,
     )
 
@@ -62,6 +73,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(tasks_router)
     app.include_router(voice_router)
+    app.include_router(personality_router)
 
     # WebSocket streaming
     @app.websocket("/ws/chat")
@@ -85,6 +97,6 @@ def create_app() -> FastAPI:
 
     @app.get("/api/ping")
     async def ping():
-        return {"status": "ok", "service": "PsychoPortal"}
+        return {"status": "ok", "service": "PsychoPortal", "version": "0.2.0"}
 
     return app

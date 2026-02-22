@@ -1,10 +1,10 @@
 # PsychoPortal
 
-**A self-evolving AI personal assistant with a persistent knowledge graph.**
+**A self-evolving AI companion with persistent memory, TARS/Jarvis personality, and proactive intelligence.**
 
-> Remembers everything. Learns from every conversation. Gets smarter every session.
-> Talk to it by voice, upload files, and watch it build a living knowledge graph in real time.
-> Works with Claude API (dev) or any local model via Ollama.
+> Remembers everything. Learns your personality. Gets smarter every session.
+> Checks in on you. Reminds you of what matters. Talks like Jarvis — wit, warmth, precision.
+> Works with Claude API (dev) or any local model via Ollama. Fully switchable to offline.
 
 ---
 
@@ -12,27 +12,53 @@
 
 PsychoPortal is not a wrapper around an LLM. It is an autonomous learning system that:
 
-- **Builds a knowledge graph** from your conversations — entities, relationships, facts, preferences — all structured, confidence-weighted, and growing
-- **Learns from mistakes** — when you correct it, it drops confidence on the wrong belief, indexes the correction semantically, and injects a warning before similar future questions
-- **Reflects after sessions** — synthesizes what was learned, derives insights, writes a journal, updates the graph, and runs maintenance
-- **Remembers everything** across sessions — semantic vector search (ChromaDB) finds relevant past conversations by meaning, not just keywords
-- **Ingests any file** — `.py`, `.md`, `.pdf`, `.json`, `.yaml`, `.csv`, images — all parsed and absorbed into the knowledge graph
-- **Understands images** — upload screenshots, diagrams, charts, handwritten notes, or code screenshots; Claude Vision extracts every piece of knowledge from them
-- **Voice mode** — full duplex voice conversation: speak to it, it speaks back, with an animated morphing blob that reacts to audio in real time
-- **Web search** — auto-detects queries that need live data and injects DuckDuckGo / Brave results into the agent's context before responding; indicated in the chat UI
-- **Image chat** — paste or drop any image directly into the chat input; Claude Vision analyses it inline and the knowledge is also stored in the graph
-- **Interactive graph explorer** — full-screen D3 overlay with filters, confidence slider, node search, detail panel, and one-click node deletion
-- **Tracks your health** — mentions of weight, sleep, calories, etc. are auto-logged silently
-- **Manages your tasks** — "remind me to X" creates tasks with inferred priority and due date
-- **Runs Python code** — ask "run this" and it executes safely in a sandboxed subprocess
-- **Session history** — browse all past conversations in the web UI
+- **Has a real personality** — TARS-style adjustable traits (humor, directness, warmth, wit, sass). Set humor to 90% and watch the difference.
+- **Learns YOU** — your humor style, communication preferences, thinking patterns, hobbies, interests, pet peeves. Adapts to you over time.
+- **Checks in on you** — morning/evening greetings, proactive reminders, calendar alerts. Notices if you seem stressed.
+- **Manages reminders** — "remind me to call mom tomorrow at 3pm" → done. Recurring, snooze, priority.
+- **Calendar integration** — local calendar with optional Google Calendar sync.
+- **Builds a knowledge graph** from your conversations — entities, relationships, facts, preferences — all structured, confidence-weighted, and growing.
+- **Learns from mistakes** — when you correct it, it drops confidence on the wrong belief and warns before repeating.
+- **Reflects after sessions** — synthesizes learnings, updates the graph, writes a journal.
+- **Remembers everything** across sessions via semantic vector search.
+- **Ingests any file** — `.py`, `.md`, `.pdf`, `.json`, images — parsed and absorbed into the knowledge graph.
+- **Voice mode** — full duplex: speak to it, it speaks back. Animated blob reacts to audio in real time.
+- **Web search** — auto-detects queries needing live data and injects results before responding.
+- **Image chat** — paste any image; Claude Vision analyses it inline.
+- **Interactive graph explorer** — full-screen D3 with filters, confidence slider, node detail, deletion.
+- **Proactive notifications** — browser notifications for due reminders and upcoming calendar events.
+
+---
+
+## The Personality System (TARS/Jarvis-style)
+
+Every trait is adjustable from 0% to 100%, just like TARS:
+
+| Trait | Default | 0% | 100% |
+|-------|---------|-----|------|
+| **Humor** | 75% | Deadpan serious | Full comedian |
+| **Wit** | 82% | Literal/simple | Razor-sharp layered wit |
+| **Directness** | 88% | Verbose, diplomatic | Blunt, no padding |
+| **Warmth** | 72% | Cold/clinical | Deeply warm |
+| **Sass** | 38% | Fully deferential | Maximum Jarvis |
+| **Formality** | 12% | Casual/chill | Formal/proper |
+| **Proactive** | 82% | Reactive only | Always ahead |
+| **Empathy** | 78% | Purely analytical | Mood-sensitive |
+
+**Ways to adjust personality:**
+- Web UI: Click **⚙ Personality** button → drag sliders
+- Chat: `"set humor to 90%"` / `"be more direct"` / `"dial down the sass"`
+- REST: `PATCH /api/personality { "humor_level": 0.9 }`
+- `.env`: `PERSONALITY_HUMOR=0.90`
 
 ---
 
 ## Architecture
 
 ```
-User Input (text or voice)
+User Input (text / voice / image)
+    │
+    ├─ Personality Adapter ── TARS-style trait system + user personality learning
     │
     ▼
 Signal Detector ──── correction/confirmation → real-time confidence update
@@ -41,18 +67,20 @@ Domain Router ─────── coding / health / tasks / general
     │
     ├─ Semantic Memory (ChromaDB) ─── finds relevant past conversations
     ├─ Knowledge Graph (NetworkX) ─── retrieves relevant nodes by meaning + PageRank
-    └─ Mistake Warnings ───────────── injects "known failure patterns" from past errors
+    ├─ Reminder/Calendar context ──── injects due/upcoming events
+    ├─ Check-in Engine ───────────── proactive morning/evening/return context
+    └─ Mistake Warnings ───────────── injects "known failure patterns"
     │
     ▼
-LLM (Claude Haiku / Ollama)
+LLM (Claude / Ollama) — with personality-calibrated system prompt
     │
     ▼
-Domain Handler ─────── code execution / metric logging / task creation
+Domain Handler ─────── code execution / metric logging / task creation / reminder creation
     │
     ▼
 Response to user (text + optional TTS → voice)
     │ (background)
-    ├─ Extract entities/relations/facts → Knowledge Graph
+    ├─ Extract entities/relations/personality signals → Knowledge Graph
     ├─ Store in ChromaDB (semantic memory)
     ├─ Log to episodic event log
     └─ Record mistake (if correction was detected)
@@ -61,7 +89,11 @@ Response to user (text + optional TTS → voice)
 Post-Session Reflection:
     LLM synthesizes session → quality score, learnings, corrections
     → update graph confidence → derive insights → run graph maintenance
-    → write session journal (JSON + Markdown) → save everything
+    → write session journal → save personality state
+
+── Background (ProactiveScheduler — every 60s) ─────────────────
+    Check due reminders → emit notifications
+    Check calendar events → emit pre-event alerts
 ```
 
 ### The Four Memory Systems
@@ -69,380 +101,221 @@ Post-Session Reflection:
 | Layer | Storage | Purpose |
 |-------|---------|---------|
 | **Short-term** | In-process deque | Last 20 turns, immediate LLM context |
-| **Long-term** | SQLite | All interactions, facts, preferences |
+| **Long-term** | SQLite | All interactions, facts, preferences, reminders, calendar |
 | **Semantic** | ChromaDB (ONNX embeddings) | Find relevant past conversations by meaning |
 | **Episodic** | SQLite event log | Ordered timeline of what happened when |
 
 ### Knowledge Graph
 
 - **12 node types**: concept, entity, person, technology, fact, preference, skill, mistake, question, topic, file, event
-- **16 edge types**: is_a, part_of, relates_to, contradicts, corrects, preferred_by, extracted_from, inferred_from…
-- Every node has a **confidence score** (0.0–1.0) updated by: user corrections (−0.4), confirmations (+0.2), time decay (−0.001/day), reinforcement (+0.03)
-- Nodes below 0.05 confidence are deprecated (kept as history, not used in responses)
-- **PageRank** computes node importance — frequently-connected nodes appear in more contexts
+- **Personality nodes**: `humor_style:dry`, `interest:machine-learning`, `hobby:cycling`, `comm_style:brief`
+- Every node has a **confidence score** (0.0–1.0) updated by: user corrections (−0.4), confirmations (+0.2), time decay, reinforcement
+- **PageRank** computes node importance
 
 ---
 
 ## Requirements
 
 - **Python 3.11+**
-- **Anthropic API key** — get one free at [console.anthropic.com](https://console.anthropic.com) (Claude Haiku is very cheap, ~$0.001 per conversation)
-- **OR** [Ollama](https://ollama.com) installed locally with a model pulled (e.g., `ollama pull llama3.2`)
-- ~500MB disk for the ONNX embedding model (downloaded once automatically on first run)
-- For voice mode: Chrome or Edge (Web Speech API required for STT)
+- **Anthropic API key** — get one free at [console.anthropic.com](https://console.anthropic.com)
+- **OR** [Ollama](https://ollama.com) for fully local LLM inference
+- ~500MB disk for the ONNX embedding model (downloaded once automatically)
+- For voice mode: Chrome or Edge
 
 ---
 
 ## Installation
 
-### 1. Clone the repository
-
 ```bash
 git clone https://github.com/DSWagner/psycho_portal
 cd psycho_portal
-```
-
-### 2. Create a virtual environment
-
-```bash
 python -m venv venv
-
-# Windows (Command Prompt):
-venv\Scripts\activate
-
-# Windows (Git Bash / PowerShell):
-./venv/Scripts/activate
-
-# macOS / Linux:
-source venv/bin/activate
-```
-
-### 3. Install dependencies
-
-```bash
+# Windows: ./venv/Scripts/activate | Linux/Mac: source venv/bin/activate
 pip install -r requirements.txt
-```
-
-> First install downloads ~500MB (ChromaDB ONNX model + torch). Subsequent runs are instant.
-
-### 4. Configure your API key
-
-```bash
 cp .env.example .env
+# Edit .env and set your ANTHROPIC_API_KEY
 ```
-
-Open `.env` in any text editor and set your key:
-
-```env
-LLM_PROVIDER=anthropic
-ANTHROPIC_API_KEY=sk-ant-api03-YOUR_REAL_KEY_HERE
-ANTHROPIC_MODEL=claude-haiku-4-5-20251001
-```
-
-**Get your API key:** [console.anthropic.com → API Keys → Create Key](https://console.anthropic.com)
-
-> To use a local model instead (no API key needed):
-> ```env
-> LLM_PROVIDER=ollama
-> OLLAMA_MODEL=llama3.2
-> OLLAMA_BASE_URL=http://localhost:11434
-> ```
-> Then run `ollama serve` and `ollama pull llama3.2` first.
-
----
 
 ## Quick Start
 
 ```bash
-# Start the chat dashboard (CLI)
-python main.py chat
-
-# Start the web UI
-python main.py serve
-# → open http://localhost:8000
+python main.py serve   # Web UI at http://localhost:8000
+python main.py chat    # Rich terminal dashboard
 ```
-
-On first launch:
-1. The ONNX embedding model is downloaded (~79MB, one time only)
-2. A SQLite database is created at `data/psycho.db`
-3. Your knowledge graph starts empty and grows from conversations
 
 ---
 
-## Running the Application
+## Personality System in Action
 
-### Web UI (recommended)
-
-```bash
-python main.py serve
+### Via chat (TARS-style commands):
+```
+"set humor to 90%"              → Humor: 75% → 90%
+"be more direct"                → Directness: 88% → 100% (capped)
+"dial down the sass"            → Sass: 38% → 18%
+"set your directness to 100%"   → Directness: 100%
+"be a bit less formal"          → Formality: 12% → 0% (capped)
 ```
 
-Opens the API server at **http://localhost:8000** — visit in your browser for the full web UI.
+### Via Web UI:
+Click **⚙ Personality** in the header → drag sliders → Apply Changes
 
-**Web UI features:**
-- Streaming chat with markdown rendering and code highlighting
-- **Session history panel** (left sidebar) — browse and replay all past conversations
-- **New Chat button** — clears the display while preserving all memory
-- **File upload** (📎 button or drag & drop) — ingest any file directly from your browser
-- **Image chat** — paste (`Ctrl+V`) or drop an image into the chat input; preview strip shows before sending; Claude Vision replies inline
-- **Voice mode** (🎤 Voice button) — full voice call experience with animated blob
-- **Graph Explorer** (🗺 Graph button) — full-screen D3.js graph with type filters, confidence slider, text search, node detail panel, and delete
-- **Web search indicator** — a `🔍 web search: "query"` badge appears under the agent reply when live results were injected
-- Live mini D3.js knowledge graph in the right sidebar
-- Stats panel, task list, text ingest
-
-### Chat (CLI Dashboard)
-
+### Via REST API:
 ```bash
-python main.py chat
+# Get current personality
+GET /api/personality
+
+# Update traits
+PATCH /api/personality
+{ "humor_level": 0.9, "sass_level": 0.6 }
+
+# Set single trait
+POST /api/personality/trait
+{ "trait": "humor", "value": 0.9 }
 ```
 
-The dashboard shows a Rich terminal UI with your conversation, typing history (arrow keys), and inline stats.
+---
 
-### Statistics
+## Proactive Features
 
-```bash
-python main.py stats
+### Reminders
+Create via chat:
+```
+"remind me to submit the report tomorrow at 9am"
+"set a reminder for the team meeting next Friday at 2pm"
+"remind me in 30 minutes to take a break"
 ```
 
-Shows session history, graph stats, memory counts.
-
-### Knowledge Graph Inspector
-
+Or via API:
 ```bash
-# Show top 25 nodes
-python main.py graph
+POST /api/reminders
+{ "title": "Submit report", "due_timestamp": 1234567890, "priority": "high" }
 
-# Filter by type
-python main.py graph --type preference
-
-# Export to D3.js JSON for custom visualization
-python main.py graph --export graph.json
+GET /api/reminders          # List pending
+PATCH /api/reminders/{id}/complete
+PATCH /api/reminders/{id}/snooze?minutes=15
 ```
 
-### File Ingestion
-
+### Calendar
 ```bash
-# Single file
-python main.py ingest notes.md
-python main.py ingest report.pdf
-python main.py ingest mycode.py
-python main.py ingest screenshot.png   # vision-extracted via Claude
+POST /api/calendar
+{ "title": "Team standup", "start_timestamp": 1234567890, "location": "Zoom" }
 
-# Entire folder (recursive)
-python main.py ingest ./docs/
-python main.py ingest ./src/
-
-# Raw text
-python main.py ingest "Python uses indentation for blocks" --text
+GET /api/calendar           # Upcoming 7 days
+GET /api/calendar/today     # Today's events
 ```
 
-**Supported file types:** `.txt`, `.md`, `.rst`, `.py`, `.js`, `.ts`, `.go`, `.rs`, `.java`, `.cpp`, `.c`, `.json`, `.yaml`, `.toml`, `.csv`, `.pdf`, `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`
+### Notifications
+The web UI polls `GET /api/notifications` every 30 seconds.
+The 🔔 bell shows unread count. Click to see all notifications.
 
-> **Images** are processed using Claude's vision API — every word, chart, diagram, code screenshot, and UI element is extracted and stored in the knowledge graph. Requires Anthropic provider.
-
-### Task Manager
-
-```bash
-# View pending tasks
-python main.py tasks
-
-# Add a task
-python main.py tasks --add "Review PR #47" --priority high
-
-# Complete a task (by ID prefix or title match)
-python main.py tasks --done "Review PR"
-
-# View completed tasks
-python main.py tasks --all
-```
-
-### Health Dashboard
-
-```bash
-python main.py health           # Last 30 days
-python main.py health --days 7  # Last week
-```
-
-### Post-Session Reflection
-
-```bash
-python main.py reflect
-```
-
-Manually triggers the reflection engine on your most recent session data.
-
-### Reset (start fresh)
-
-```bash
-python main.py reset        # Asks for confirmation
-python main.py reset --yes  # Wipes everything immediately
-```
-
-Deletes all memory: knowledge graph, conversation history, vectors, journals, health and tasks data. Your `.env` config is untouched.
+### Check-ins
+The agent checks in automatically:
+- **Morning** (6–11am): "Good morning [name] — I see you've got a busy one ahead..."
+- **Evening** (6–11pm): references what you worked on, asks how the day went
+- **Long gap**: "Welcome back — it's been 3 days. Here's what was pending..."
+- **Stress**: detects frustration signals from recent sessions, opens with care
 
 ---
 
 ## Voice Mode
 
-Voice mode gives you a real-time voice conversation experience directly in the browser.
+1. Run `python main.py serve` → open `http://localhost:8000`
+2. Click **🎤 Voice** → click the microphone
+3. Speak naturally — transcript appears in real time
+4. Agent responds and speaks back; mic reopens automatically
 
-### How to use
-
-1. Run `python main.py serve` and open `http://localhost:8000`
-2. Click **🎤 Voice** in the top-right header
-3. Click the **microphone button** (or press `Space`) to start speaking
-4. Speak naturally — the transcript appears in real time
-5. The agent processes your message and speaks the response
-6. The mic reopens automatically for continuous conversation
-7. Press `Esc` or click **✕ End Call** to exit
-
-### The Animated Blob
-
-The central blob reacts to the current state:
-
-| State | Color | Animation |
-|-------|-------|-----------|
-| **Ready** | Purple | Slow gentle breathing |
-| **Listening** | Cyan | Faster pulse + expanding rings |
-| **Thinking** | Amber | Fast complex morphing |
-| **Speaking** | Pink/Magenta | Intense warping driven by audio amplitude |
-
-### Microphone selection
-
-Voice mode uses the browser's **Web Speech API**, which routes audio through your OS default recording device. To change which microphone is used:
-- **Windows**: Right-click the speaker icon → Sound settings → Input → choose device
-- **Chrome**: `chrome://settings/content/microphone` → select device per-site
-- **Edge**: `edge://settings/content/microphone` → select device per-site
-
-> Voice input requires Chrome or Edge. Firefox does not support the Web Speech API. The agent will show a warning if the browser is unsupported.
-
-### TTS Provider options
-
-Configure in `.env` (cheapest first):
+### TTS Options
 
 | Provider | Quality | Cost | Config |
 |----------|---------|------|--------|
 | `browser` (default) | Good | **Free** | None |
-| `openai` | High | ~$0.015/1k chars | `OPENAI_API_KEY` + `TTS_VOICE` |
-| `elevenlabs` | Highest | Paid | `ELEVENLABS_API_KEY` + `ELEVENLABS_VOICE_ID` |
+| `openai` | High | ~$0.015/1k chars | `OPENAI_API_KEY` |
+| `elevenlabs` | Highest | Paid | `ELEVENLABS_API_KEY` |
+| `local` | Good | **Free** | `pyttsx3` or `kokoro-onnx` |
+
+### STT Options
+
+| Provider | Quality | Cost | Config |
+|----------|---------|------|--------|
+| `browser` (default) | Good | **Free** | None (Chrome/Edge required) |
+| `whisper_local` | High | **Free** | `faster-whisper` installed |
+
+---
+
+## Full Local Mode (No API Keys)
+
+PsychoPortal is designed to run 100% offline in production:
 
 ```env
-# Default — no config needed, uses browser Web Speech API
-TTS_PROVIDER=browser
+# .env for fully-local setup
+LLM_PROVIDER=ollama
+OLLAMA_MODEL=llama3.2          # or mistral, qwen2.5, etc.
 
-# OpenAI TTS
-TTS_PROVIDER=openai
-OPENAI_API_KEY=sk-your-key-here
-TTS_VOICE=alloy   # alloy | echo | fable | onyx | nova | shimmer
+TTS_PROVIDER=local
+LOCAL_TTS_BACKEND=pyttsx3       # zero download, system TTS
+# or LOCAL_TTS_BACKEND=kokoro   # high quality, ~300MB download
 
-# ElevenLabs
-TTS_PROVIDER=elevenlabs
-ELEVENLABS_API_KEY=your-key-here
-ELEVENLABS_VOICE_ID=21m00Tcm4TlvDq8ikWAM  # Rachel (default)
+STT_PROVIDER=whisper_local
+WHISPER_MODEL=base              # ~145MB download
+WHISPER_BACKEND=faster_whisper
 ```
+
+Then:
+```bash
+ollama serve
+ollama pull llama3.2
+pip install pyttsx3 faster-whisper  # optional local models
+python main.py serve
+```
+
+Embeddings (ChromaDB) already use ONNX/sentence-transformers — **fully local by default**.
 
 ---
 
 ## In-Chat Commands
 
-While in `python main.py chat`, type these commands:
-
 | Command | Description |
 |---------|-------------|
 | `/help` | Show all commands |
 | `/stats` | Memory, graph, and session statistics |
-| `/graph` | Inspect the top 20 knowledge graph nodes |
+| `/graph` | Inspect top knowledge graph nodes |
 | `/tasks` | View pending tasks |
+| `/reminders` | View pending reminders |
 | `/health` | View logged health metrics |
 | `/facts` | List stored facts with confidence scores |
-| `/ingest <path>` | Ingest a file or folder into the graph |
-| `/reflect` | Run post-session reflection right now |
-| `/mistakes` | Show all recorded past mistakes |
+| `/personality` | Show current personality calibration |
+| `/ingest <path>` | Ingest a file or folder |
+| `/reflect` | Run post-session reflection |
+| `/mistakes` | Show recorded past mistakes |
 | `/clear` | Clear the screen |
 | `exit` / `quit` | Exit (triggers reflection automatically) |
 
 ---
 
-## How the Agent Learns
-
-### During a conversation
-
-1. **Signal detection** — Before every response, the agent checks if you're correcting or confirming it. "No that's wrong" immediately drops confidence on the relevant graph node.
-
-2. **Graph context injection** — Relevant knowledge graph nodes are retrieved via semantic search + graph traversal and injected into the system prompt before every LLM call.
-
-3. **Mistake warnings** — If you've corrected the agent on a similar question before, that warning appears in the prompt: *"Previously, when asked X, you said something incorrect. The correct answer is Y."*
-
-4. **Background extraction** — After every response, a cheap LLM call extracts entities, relationships, facts, and corrections from the exchange and adds them to the graph.
-
-5. **Agent identity** — If you give the agent a name (e.g. "your name is Raz"), it stores that as a high-confidence preference node and uses it permanently across all sessions.
-
-### At session end (exit or `/reflect`)
-
-The **Reflection Engine** runs a full pipeline:
-
-1. Reviews the last 25 interactions
-2. LLM synthesizes: quality score, key learnings, corrections found, patterns, knowledge gaps
-3. Updates graph confidence (boost confirmed beliefs, drop incorrect ones)
-4. Adds key learnings as `FACT` nodes
-5. Records corrections as indexed mistakes (searchable next session)
-6. Derives insights by combining multiple graph nodes
-7. Runs graph maintenance: deduplication, pruning, time decay, PageRank
-8. Writes a session journal to `data/journals/YYYY-MM-DD_sessionID.json` (+ `.md`)
-9. Saves the full knowledge graph to disk
-
----
-
 ## Web UI API Reference
 
-When running `python main.py serve`, the following endpoints are available.
-Interactive docs at **http://localhost:8000/docs**.
+Interactive docs at **http://localhost:8000/docs**
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/` | Web UI (index.html) |
-| `GET` | `/api/stats` | Agent statistics |
-| `POST` | `/api/chat` | Send message, get response |
-| `GET` | `/api/history` | Recent chat history |
-| `POST` | `/api/ingest` | Ingest text into graph |
-| `POST` | `/api/upload` | Upload and ingest a file (multipart) |
-| `GET` | `/api/sessions` | List all past sessions |
-| `GET` | `/api/sessions/{id}/messages` | Get messages for a specific session |
-| `GET` | `/api/graph` | Knowledge graph (D3.js format, up to 500 nodes) |
-| `GET` | `/api/graph/node/{id}` | Full node detail + edge list |
-| `DELETE` | `/api/graph/node/{id}` | Soft-delete (deprecate) a node |
-| `GET` | `/api/tasks` | List tasks |
-| `POST` | `/api/tasks` | Create task |
-| `PATCH` | `/api/tasks/{id}/complete` | Complete task |
-| `GET` | `/api/health-metrics` | Health metric summary |
-| `POST` | `/api/health-metrics` | Log a health metric |
-| `GET` | `/api/voice/config` | Active TTS provider info |
-| `POST` | `/api/voice/tts` | Text-to-speech (returns MP3) |
+| `GET` | `/api/personality` | Get current personality traits |
+| `PATCH` | `/api/personality` | Update personality traits |
+| `POST` | `/api/personality/trait` | Set a single trait |
+| `GET` | `/api/notifications` | Get pending notifications |
+| `POST` | `/api/notifications/{id}/read` | Mark notification as read |
+| `GET` | `/api/reminders` | List pending reminders |
+| `POST` | `/api/reminders` | Create a reminder |
+| `PATCH` | `/api/reminders/{id}/complete` | Complete a reminder |
+| `PATCH` | `/api/reminders/{id}/snooze` | Snooze a reminder |
+| `GET` | `/api/calendar` | Get upcoming events |
+| `GET` | `/api/calendar/today` | Get today's events |
+| `POST` | `/api/calendar` | Create a calendar event |
+| `DELETE` | `/api/calendar/{id}` | Delete a calendar event |
+| `GET` | `/api/voice/config` | Active TTS/STT provider info |
+| `POST` | `/api/voice/tts` | Text-to-speech (returns audio) |
+| `POST` | `/api/voice/stt` | Speech-to-text (local Whisper) |
 | `WS` | `/ws/chat` | Streaming WebSocket chat |
-| `GET` | `/docs` | Interactive API docs (Swagger) |
-
-### WebSocket Protocol
-
-```json
-// Send (text chat):
-{ "type": "chat", "message": "your message" }
-
-// Send (image chat — base64-encoded image):
-{ "type": "image_chat", "message": "What is this?", "image": "<base64>", "media_type": "image/jpeg" }
-
-// Receive (streaming tokens):
-{ "type": "token", "token": "Hello" }
-// … repeated for each token
-
-// Final message:
-{ "type": "done", "response": "full response", "domain": "coding",
-  "actions": ["Task created: Buy milk"], "search_query": "latest AI news" }
-// search_query is set only when a live web search was performed
-
-// On error:
-{ "type": "error", "message": "description" }
-```
+| ... | *All previous endpoints* | See /docs for full reference |
 
 ---
 
@@ -451,38 +324,41 @@ Interactive docs at **http://localhost:8000/docs**.
 ```env
 # ── LLM Provider ──────────────────────────────────────────────────────────────
 LLM_PROVIDER=anthropic           # "anthropic" or "ollama"
-ANTHROPIC_API_KEY=sk-ant-...     # Your key from console.anthropic.com
-ANTHROPIC_MODEL=claude-haiku-4-5-20251001  # cheapest; swap for sonnet/opus
+ANTHROPIC_API_KEY=sk-ant-...
+ANTHROPIC_MODEL=claude-haiku-4-5-20251001
 
 # ── Local Model (Ollama) ──────────────────────────────────────────────────────
 # LLM_PROVIDER=ollama
 # OLLAMA_MODEL=llama3.2
-# OLLAMA_BASE_URL=http://localhost:11434
 
-# ── TTS Voice Mode ────────────────────────────────────────────────────────────
-# TTS_PROVIDER=browser          # browser (free) | openai | elevenlabs
-# OPENAI_API_KEY=sk-...         # For OpenAI TTS
-# TTS_VOICE=alloy               # alloy | echo | fable | onyx | nova | shimmer
-# ELEVENLABS_API_KEY=...        # For ElevenLabs TTS
-# ELEVENLABS_VOICE_ID=21m00Tcm4TlvDq8ikWAM  # ElevenLabs voice
+# ── Personality (TARS-style, 0.0–1.0) ────────────────────────────────────────
+# PERSONALITY_HUMOR=0.75
+# PERSONALITY_DIRECTNESS=0.88
+# PERSONALITY_WARMTH=0.72
+# PERSONALITY_WIT=0.82
+# PERSONALITY_SASS=0.38
+# PERSONALITY_FORMALITY=0.12
+# PERSONALITY_PROACTIVE=0.82
+# PERSONALITY_EMPATHY=0.78
 
-# ── Web Search ─────────────────────────────────────────────────────────────────
-# WEB_SEARCH_ENABLED=true       # auto-inject live results for queries needing current data
-# BRAVE_API_KEY=                # optional Brave Search API key (free: 2000 req/month)
-#                               # if not set, falls back to DuckDuckGo (always free)
+# ── Proactive System ──────────────────────────────────────────────────────────
+# PROACTIVE_ENABLED=true
+# CHECKIN_ENABLED=true
+# GOOGLE_CALENDAR_CREDENTIALS=data/google_credentials.json
 
-# ── Storage (optional overrides) ──────────────────────────────────────────────
+# ── TTS / STT ─────────────────────────────────────────────────────────────────
+# TTS_PROVIDER=browser          # browser | openai | elevenlabs | local
+# STT_PROVIDER=browser          # browser | whisper_local
+# LOCAL_TTS_BACKEND=pyttsx3     # pyttsx3 | kokoro | coqui
+# WHISPER_MODEL=base            # tiny | base | small | medium | large-v3
+
+# ── Web Search ────────────────────────────────────────────────────────────────
+# WEB_SEARCH_ENABLED=true
+# BRAVE_API_KEY=                # optional
+
+# ── Storage ───────────────────────────────────────────────────────────────────
 # DATA_DIR=data
 # DB_PATH=data/psycho.db
-
-# ── Agent Behavior ────────────────────────────────────────────────────────────
-# REFLECTION_ENABLED=true
-# EXTRACTION_ENABLED=true
-# MAX_SHORT_TERM_MESSAGES=20
-
-# ── Web Server ────────────────────────────────────────────────────────────────
-# API_HOST=0.0.0.0
-# API_PORT=8000
 ```
 
 ---
@@ -498,77 +374,44 @@ psycho_portal/
 │
 ├── psycho/
 │   ├── agent/                    ← orchestration (core, loop, context, reflection)
-│   ├── llm/                      ← LLM abstraction (Anthropic + Ollama)
+│   ├── personality/              ← TARS-style personality engine
+│   │   ├── traits.py             ← AgentPersonality (9 adjustable traits)
+│   │   ├── user_profile.py       ← Dynamic user personality model
+│   │   └── adapter.py            ← Prompt section generator
+│   ├── proactive/                ← Proactive agent systems
+│   │   ├── reminders.py          ← Smart reminder manager + NL time parsing
+│   │   ├── calendar_manager.py   ← Local calendar + Google Calendar sync
+│   │   ├── checkin.py            ← Context-aware check-in logic
+│   │   └── scheduler.py          ← Background async scheduler
+│   ├── llm/                      ← LLM abstraction (Anthropic + Ollama + local)
+│   │   ├── whisper_local.py      ← Local Whisper STT provider
+│   │   └── local_tts.py          ← Local TTS (pyttsx3 / Kokoro / Coqui)
 │   ├── memory/                   ← 4-tier memory (short, long, semantic, episodic)
-│   ├── knowledge/                ← graph engine, extractor, evolver, reasoner, ingestion
-│   ├── learning/                 ← mistake tracker, signal detector, journal, insights
+│   ├── knowledge/                ← graph engine, extractor, evolver, reasoner
+│   ├── learning/                 ← mistake tracker, signal detector, journal
 │   ├── tools/                    ← pluggable agent tools (web_search.py)
 │   ├── domains/                  ← coding, health, tasks, general + router
 │   ├── storage/                  ← SQLite, ChromaDB, graph JSON store
 │   ├── cli/                      ← Rich TUI, chat view, dashboard
 │   └── api/                      ← FastAPI server, WebSocket, web UI
 │       ├── routes/
-│       │   ├── chat.py           ← chat, history, sessions, file upload
-│       │   ├── graph.py          ← knowledge graph endpoints
-│       │   ├── tasks.py          ← task management
-│       │   ├── health_metrics.py ← health tracking
-│       │   └── voice.py          ← TTS config + audio synthesis
+│       │   ├── chat.py
+│       │   ├── graph.py
+│       │   ├── tasks.py
+│       │   ├── health_metrics.py
+│       │   ├── voice.py          ← TTS + local Whisper STT
+│       │   └── personality.py    ← personality, notifications, reminders, calendar
 │       └── static/
-│           └── index.html        ← single-page web UI (chat + voice + history)
+│           └── index.html        ← single-page web UI
 │
 └── data/                         ← all personal data (gitignored)
-    ├── psycho.db                 ← SQLite: interactions, facts, tasks, health
-    ├── graph/
-    │   └── knowledge_graph.json  ← your knowledge graph
+    ├── psycho.db                 ← SQLite: interactions, facts, tasks, reminders, calendar
+    ├── personality.json          ← saved personality trait levels
+    ├── graph/                    ← knowledge graph
     ├── vectors/                  ← ChromaDB embeddings
-    ├── journals/                 ← session journals (JSON + Markdown)
+    ├── journals/                 ← session journals
     └── logs/
-        └── psycho.log
 ```
-
----
-
-## Model Cost Reference
-
-Using Claude Haiku for development (the cheapest capable model):
-
-| Operation | Tokens | Cost |
-|-----------|--------|------|
-| Single chat response | ~500–2000 | ~$0.001 |
-| Knowledge extraction (background) | ~300 | ~$0.0003 |
-| Post-session reflection | ~3000 | ~$0.003 |
-| Domain classification | ~50 | ~$0.00005 |
-| Image vision extraction | ~500–1500 | ~$0.001–0.003 |
-
-A full day of heavy use costs roughly **$0.05–0.20**. For production, swap to `claude-sonnet-4-6` in `.env`.
-
----
-
-## Troubleshooting
-
-**"invalid x-api-key" error**
-→ Your `.env` has the placeholder key. Set `ANTHROPIC_API_KEY` to your real key from [console.anthropic.com](https://console.anthropic.com).
-
-**Slow first startup**
-→ ChromaDB downloads the ONNX embedding model (~79MB) on first use. This only happens once.
-
-**"Port 8000 already in use"**
-→ Change the port: `python main.py serve --port 8001` or set `API_PORT=8001` in `.env`.
-
-**Knowledge graph not growing**
-→ Check `data/logs/psycho.log` for extraction errors. Make sure `EXTRACTION_ENABLED=true` in `.env`.
-
-**Ollama connection refused**
-→ Run `ollama serve` in a separate terminal first, then `ollama pull llama3.2`.
-
-**Voice mode: mic not working**
-→ Browser must have microphone permission. In Chrome: click the lock icon in the address bar → allow microphone. Voice input requires Chrome or Edge (Firefox lacks Web Speech API support).
-
-**Voice mode: no sound output**
-→ Default uses browser TTS (free). If you configured `TTS_PROVIDER=openai` or `elevenlabs`, check the API key is valid and the provider is reachable.
-
-**Image ingestion returns 0 nodes**
-→ Image extraction requires the Anthropic provider (`LLM_PROVIDER=anthropic`). Ollama does not support vision. Check `data/logs/psycho.log` for errors.
 
 ---
 
@@ -578,34 +421,40 @@ A full day of heavy use costs roughly **$0.05–0.20**. For production, swap to 
 |-------|--------|---------|
 | 1 | ✅ Done | Foundation: agent core, 4-tier memory, Rich CLI |
 | 2 | ✅ Done | Semantic memory (ChromaDB + ONNX embeddings) |
-| 3 | ✅ Done | Knowledge graph + file ingestion (PDF/py/md/json/…) |
+| 3 | ✅ Done | Knowledge graph + file ingestion |
 | 4 | ✅ Done | Self-evolution: reflection, mistake tracker, insights |
 | 5 | ✅ Done | Domain intelligence: coding execution, health, tasks |
 | 6 | ✅ Done | FastAPI server + streaming WebSocket + web UI |
-| 7 | ✅ Done | Web UI v2: session history, file upload, drag & drop, image vision |
+| 7 | ✅ Done | Web UI v2: session history, file upload, image vision |
 | 8 | ✅ Done | Voice mode: STT + TTS + animated blob UI |
 | 9 | ✅ Done | Graph explorer, web search injection, inline image chat |
+| **10** | ✅ **Done** | **TARS/Jarvis personality engine + user personality learning** |
+| **11** | ✅ **Done** | **Proactive system: reminders, calendar, check-ins, notifications** |
+| **12** | ✅ **Done** | **Full local model stack: Whisper STT + local TTS + Ollama** |
 
 ---
 
 ## Tech Stack
 
-| Component | Technology | Why |
-|-----------|-----------|-----|
-| Language | Python 3.11+ | Best AI ecosystem |
-| LLM (API) | Claude Haiku 4.5 | Cheapest capable model, ~$0.001/chat |
-| LLM (local) | Ollama | Zero-cost local inference |
-| Vision | Claude Vision API | Image knowledge extraction |
-| Knowledge graph | NetworkX | In-process, JSON serializable, zero infra |
-| Vector store | ChromaDB | Local, no Docker, ONNX embeddings |
-| Embeddings | all-MiniLM-L6-v2 (ONNX) | 22MB, CPU-ready, 384-dim |
-| Database | SQLite + aiosqlite | Zero setup, async, fully capable |
-| CLI | Rich + Click + prompt_toolkit | Beautiful terminal, history |
-| Web API | FastAPI + uvicorn | Async, streaming WebSocket |
-| Web UI | Vanilla JS + D3.js + marked.js | No framework bloat, instant load |
-| Voice STT | Web Speech API | Free, browser-native, zero latency |
-| Voice TTS | Browser SpeechSynthesis / OpenAI / ElevenLabs | Tiered quality/cost |
-| Config | pydantic-settings | Typed, validated, .env-backed |
+| Component | Technology |
+|-----------|-----------|
+| Language | Python 3.11+ |
+| LLM (API) | Claude Haiku/Sonnet/Opus |
+| LLM (local) | Ollama (any GGUF model) |
+| Vision | Claude Vision API |
+| Personality | Custom TARS-style trait system |
+| Knowledge graph | NetworkX + confidence scoring |
+| Vector store | ChromaDB (local, no Docker) |
+| Embeddings | all-MiniLM-L6-v2 (ONNX, CPU-ready) |
+| Database | SQLite + aiosqlite |
+| CLI | Rich + Click + prompt_toolkit |
+| Web API | FastAPI + uvicorn |
+| Web UI | Vanilla JS + D3.js + marked.js |
+| Voice STT | Browser Web Speech API / Local Whisper |
+| Voice TTS | Browser / OpenAI / ElevenLabs / Local (pyttsx3/Kokoro) |
+| Scheduler | asyncio-based background task |
+| Calendar | Local SQLite / optional Google Calendar API |
+| Config | pydantic-settings |
 
 ---
 

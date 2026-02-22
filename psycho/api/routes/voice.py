@@ -1,11 +1,24 @@
-"""Voice routes — GET /api/voice/config, POST /api/voice/tts."""
+"""Voice routes — GET /api/voice/config, POST /api/voice/tts, POST /api/voice/stt."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, File, UploadFile
 from fastapi.responses import JSONResponse, Response
 
 router = APIRouter(prefix="/api/voice", tags=["voice"])
+
+# Lazy-loaded local Whisper instance
+_whisper_stt = None
+
+
+def _get_whisper():
+    global _whisper_stt
+    if _whisper_stt is None:
+        from psycho.config import get_settings
+        from psycho.llm.whisper_local import LocalWhisperSTT
+        s = get_settings()
+        _whisper_stt = LocalWhisperSTT.from_settings(s)
+    return _whisper_stt
 
 
 @router.get("/config")
@@ -23,11 +36,18 @@ async def voice_config():
     elif s.tts_provider == "elevenlabs" and s.elevenlabs_api_key:
         provider = "elevenlabs"
         voice = s.elevenlabs_voice_id or "21m00Tcm4TlvDq8ikWAM"
+    elif s.tts_provider == "local":
+        provider = "local"
+        voice = s.local_tts_voice or s.local_tts_backend
     else:
         provider = "browser"
         voice = "browser"
 
-    return {"provider": provider, "voice": voice}
+    return {
+        "provider": provider,
+        "voice": voice,
+        "stt_provider": s.stt_provider,
+    }
 
 
 @router.post("/tts")
@@ -91,6 +111,51 @@ async def text_to_speech(request_body: dict):
         except Exception as e:
             return JSONResponse(status_code=502, content={"error": str(e)})
 
+    # ── Local TTS ─────────────────────────────────────────────────
+    if s.tts_provider == "local":
+        try:
+            from psycho.llm.local_tts import LocalTTSProvider
+            tts = LocalTTSProvider.from_settings(s)
+            audio = await tts.synthesize(text)
+            if audio:
+                return Response(content=audio, media_type="audio/wav")
+        except Exception as e:
+            return JSONResponse(status_code=502, content={"error": str(e)})
+
     # ── No server TTS configured ─────────────────────────────────
     # Return 204 — client falls back to browser SpeechSynthesis
     return Response(status_code=204)
+
+
+@router.post("/stt")
+async def speech_to_text(
+    audio: UploadFile = File(...),
+    format: str = "webm",
+):
+    """
+    Transcribe audio to text using local Whisper.
+    Only active when STT_PROVIDER=whisper_local in .env.
+
+    Send audio as multipart/form-data with field name 'audio'.
+    Returns { "text": "transcribed text" }
+    """
+    from psycho.config import get_settings
+    s = get_settings()
+
+    if s.stt_provider != "whisper_local":
+        return JSONResponse(
+            status_code=404,
+            content={"error": "Local Whisper STT not configured. Set STT_PROVIDER=whisper_local"},
+        )
+
+    try:
+        audio_data = await audio.read()
+        if not audio_data:
+            return JSONResponse(status_code=400, content={"error": "Empty audio file"})
+
+        whisper = _get_whisper()
+        text = await whisper.transcribe(audio_data, audio_format=format)
+        return {"text": text, "model": whisper.model_info}
+
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})

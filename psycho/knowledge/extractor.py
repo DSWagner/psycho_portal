@@ -83,7 +83,7 @@ Return ONLY a valid JSON object. No explanation, no markdown, just JSON.
 User message: {user_message}
 Assistant response: {agent_response}
 
-Focus on extracting knowledge ABOUT THE USER: their projects, preferences, skills, goals, habits, and identity.
+Focus on extracting knowledge ABOUT THE USER: their projects, preferences, skills, goals, habits, identity, and personality.
 Also extract factual knowledge discussed.
 
 Extract:
@@ -100,6 +100,9 @@ Extract:
   "user_identity": [
     {{"key": "name|occupation|location|current_project|goal|habit|language|framework", "value": "extracted value"}}
   ],
+  "user_personality": [
+    {{"key": "humor_style|comm_style|thinking_style|interest|hobby|pet_peeve|value|emotional_style", "value": "extracted value"}}
+  ],
   "corrections": [
     {{"wrong_label": "incorrect info", "correct_label": "correct info", "explanation": "what changed"}}
   ],
@@ -113,8 +116,17 @@ Extract:
 
 Rules:
 - Normalize entity labels to lowercase
-- PRIORITIZE user identity/preferences/projects — these are the most valuable signals
+- PRIORITIZE user identity/preferences/projects/personality — these are the most valuable signals
 - user_identity: extract whenever user says "I am", "I use", "I work on", "my name is", "I prefer", "I'm building"
+- user_personality examples:
+  - humor_style: "dry" if they use dry humor, "sarcastic", "dark", "wholesome", "dad-jokes", "absurdist", "self-deprecating"
+  - comm_style: "brief" if they write short messages, "detailed" if verbose, "technical", "casual", "formal"
+  - thinking_style: "analytical", "creative", "pragmatic", "intuitive", "systematic"
+  - interest: specific topics they're interested in (e.g., "machine learning", "philosophy", "rock climbing")
+  - hobby: specific hobbies (e.g., "cycling", "photography", "gaming")
+  - pet_peeve: things they express frustration about (e.g., "verbose code", "meetings")
+  - value: core values they express (e.g., "open source", "efficiency", "privacy")
+  - emotional_style: "reserved" or "expressive"
 - Only extract what was EXPLICITLY stated or clearly implied
 - Skip trivial exchanges (greetings only, single-word answers)
 - Properties should be specific: {{"version": "3.12", "paradigm": "OOP"}}
@@ -374,6 +386,37 @@ class KnowledgeExtractor:
                     sources=[source],
                 )
                 result.preferences.append(node)
+
+        # ── User Personality (humor style, interests, hobbies, etc.) ──
+        PERSONALITY_KEYS = {
+            "humor_style", "comm_style", "communication_style",
+            "thinking_style", "interest", "hobby", "pet_peeve",
+            "value", "emotional_style",
+        }
+        for item in raw.get("user_personality", []):
+            key = str(item.get("key", "")).strip().lower()
+            value = str(item.get("value", "")).strip()
+            if not key or not value:
+                continue
+            # Normalize key
+            if key == "communication_style":
+                key = "comm_style"
+            if key not in PERSONALITY_KEYS:
+                continue
+
+            # Store as PREFERENCE node with structured label
+            # e.g. "humor_style:dry", "interest:machine learning", "hobby:cycling"
+            pref_label = f"{key}:{value.lower()}"
+            node = KnowledgeNode.create(
+                type=NodeType.PREFERENCE,
+                label=pref_label,
+                domain="general",
+                confidence=0.70,
+                properties={"key": key, "value": value},
+                sources=[source],
+            )
+            node.display_label = f"{key.replace('_', ' ').title()}: {value}"
+            result.preferences.append(node)
 
         # ── Corrections ───────────────────────────────────────────
         for c in raw.get("corrections", []):

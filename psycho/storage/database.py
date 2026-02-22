@@ -98,9 +98,38 @@ CREATE TABLE IF NOT EXISTS tasks (
 );
 
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status, priority);
+
+CREATE TABLE IF NOT EXISTS reminders (
+    id              TEXT    PRIMARY KEY,
+    title           TEXT    NOT NULL,
+    notes           TEXT    DEFAULT '',
+    due_timestamp   REAL    NOT NULL,
+    recurrence      TEXT    DEFAULT 'none',
+    priority        TEXT    DEFAULT 'normal',
+    completed       INTEGER DEFAULT 0,
+    snoozed_until   REAL    DEFAULT 0,
+    created_at      REAL    NOT NULL,
+    session_id      TEXT    DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(due_timestamp, completed);
+
+CREATE TABLE IF NOT EXISTS calendar_events (
+    id                  TEXT    PRIMARY KEY,
+    title               TEXT    NOT NULL,
+    start_timestamp     REAL    NOT NULL,
+    end_timestamp       REAL    NOT NULL,
+    location            TEXT    DEFAULT '',
+    notes               TEXT    DEFAULT '',
+    recurrence          TEXT    DEFAULT 'none',
+    google_event_id     TEXT    DEFAULT '',
+    all_day             INTEGER DEFAULT 0,
+    reminder_minutes    INTEGER DEFAULT 15,
+    created_at          REAL    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_calendar_start ON calendar_events(start_timestamp);
 """
 
-CURRENT_VERSION = 2
+CURRENT_VERSION = 3
 
 
 class Database:
