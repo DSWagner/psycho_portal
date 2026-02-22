@@ -595,6 +595,133 @@
     }
     #voice-end-btn:hover { background: rgba(252,129,129,.25); box-shadow: 0 0 20px rgba(252,129,129,.3); }
     #voice-stt-unsupported { color: var(--red); font-size: .8rem; display: none; text-align: center; }
+
+    /* ── Documentation overlay ────────────────────────────────────── */
+    #docs-overlay {
+      position: fixed; inset: 0; z-index: 1050;
+      background: var(--void);
+      display: none; flex-direction: column; overflow: hidden;
+    }
+    #docs-overlay.open { display: flex; }
+    #docs-topbar {
+      display: flex; align-items: center; gap: 14px; flex-shrink: 0;
+      padding: 13px 24px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(7,7,15,0.92);
+      backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+    }
+    #docs-topbar-icon { font-size: 1.4rem; }
+    #docs-topbar-info { flex: 1; }
+    #docs-topbar-title {
+      font-size: 1rem; font-weight: 600; letter-spacing: .03em;
+      background: linear-gradient(90deg, var(--accent), var(--teal));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    #docs-topbar-sub { font-size: 0.7rem; color: var(--muted); margin-top: 1px; }
+    #docs-close-btn {
+      background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+      border-radius: 8px; padding: 5px 14px; font-size: 0.8rem; cursor: pointer;
+      font-family: inherit; transition: all .2s;
+    }
+    #docs-close-btn:hover { border-color: var(--red); color: var(--red); background: rgba(252,129,129,.07); }
+    #docs-scroll {
+      flex: 1; overflow-y: auto; padding: 48px 24px 80px;
+      display: flex; justify-content: center;
+      /* subtle radial glow in the reading area */
+      background: radial-gradient(ellipse 70% 50% at 50% 0%, rgba(183,148,244,.04), transparent 70%);
+    }
+    #docs-content {
+      max-width: 860px; width: 100%;
+      line-height: 1.75; color: var(--text);
+    }
+
+    /* ── Rendered markdown inside docs ────────────────────────────── */
+    #docs-content h1 {
+      font-size: 2rem; font-weight: 700; margin: 0 0 8px;
+      background: linear-gradient(90deg, var(--accent), var(--teal) 60%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+      border-bottom: 1px solid var(--border); padding-bottom: 10px;
+    }
+    #docs-content h2 {
+      font-size: 1.35rem; font-weight: 600; margin: 40px 0 12px;
+      color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 6px;
+    }
+    #docs-content h3 {
+      font-size: 1.05rem; font-weight: 600; margin: 28px 0 8px; color: var(--teal);
+    }
+    #docs-content h4 {
+      font-size: .9rem; font-weight: 600; margin: 20px 0 6px; color: var(--accent2);
+    }
+    #docs-content p { margin: 0 0 14px; }
+    #docs-content a { color: var(--blue); text-decoration: none; border-bottom: 1px solid rgba(126,184,247,.3); transition: border-color .2s; }
+    #docs-content a:hover { border-color: var(--blue); }
+    #docs-content strong { color: #fff; font-weight: 600; }
+    #docs-content em { color: var(--muted); font-style: italic; }
+    #docs-content hr {
+      border: none; border-top: 1px solid var(--border);
+      margin: 32px 0;
+    }
+    #docs-content ul, #docs-content ol {
+      margin: 0 0 14px 22px; display: flex; flex-direction: column; gap: 4px;
+    }
+    #docs-content li { padding-left: 4px; }
+    #docs-content ul li::marker { color: var(--accent); }
+    #docs-content ol li::marker { color: var(--accent2); font-weight: 600; }
+    /* nested lists */
+    #docs-content li > ul, #docs-content li > ol { margin: 4px 0 4px 18px; }
+
+    #docs-content blockquote {
+      border-left: 3px solid var(--accent); margin: 16px 0;
+      padding: 10px 16px; background: rgba(183,148,244,.06);
+      border-radius: 0 8px 8px 0; color: var(--muted); font-style: italic;
+    }
+    #docs-content code {
+      font-family: 'Space Mono', monospace; font-size: .82em;
+      background: rgba(183,148,244,.1); color: var(--accent);
+      padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(183,148,244,.18);
+    }
+    #docs-content pre {
+      margin: 16px 0; border-radius: 10px;
+      border: 1px solid var(--border);
+      overflow-x: auto;
+      background: rgba(0,0,0,.45) !important;
+      box-shadow: 0 4px 24px rgba(0,0,0,.4);
+    }
+    #docs-content pre code {
+      background: none; border: none; padding: 16px 18px; display: block;
+      font-size: .82rem; line-height: 1.65; color: inherit;
+    }
+    /* Label language badge on code blocks */
+    #docs-content pre { position: relative; }
+    #docs-content table {
+      width: 100%; border-collapse: collapse; margin: 16px 0;
+      font-size: .88rem;
+    }
+    #docs-content th {
+      background: rgba(183,148,244,.1); color: var(--accent);
+      padding: 8px 12px; text-align: left; font-weight: 600;
+      border-bottom: 1px solid var(--border);
+    }
+    #docs-content td {
+      padding: 7px 12px; border-bottom: 1px solid rgba(183,148,244,.07);
+      vertical-align: top;
+    }
+    #docs-content tr:last-child td { border-bottom: none; }
+    #docs-content tr:hover td { background: rgba(183,148,244,.04); }
+    /* badges / inline kbd */
+    #docs-content img { max-width: 100%; border-radius: 8px; margin: 8px 0; }
+    /* Loading / error state */
+    .docs-loading {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      min-height: 320px; gap: 16px; color: var(--muted);
+    }
+    .docs-loading-spinner {
+      width: 36px; height: 36px; border: 3px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
@@ -615,6 +742,7 @@
     <span class="badge" id="session-badge">—</span>
     <button class="hdr-btn" id="toggle-history-btn" title="Toggle session history">☰ History</button>
     <button class="hdr-btn" id="graph-explorer-btn" title="Open Knowledge Graph Explorer" style="border-color:#1a4060;color:var(--blue);">🗺 Graph</button>
+    <button class="hdr-btn" id="docs-btn" title="View project documentation (README)" style="border-color:#1a4a3a;color:var(--teal);">📖 Docs</button>
     <button class="hdr-btn" onclick="openPersonalityPanel()" title="TARS-style personality calibration" style="border-color:#4a3060;color:#b083f0;">⚙ Personality</button>
     <button class="hdr-btn notif-bell" id="notif-btn" onclick="toggleNotifModal()" title="Notifications">🔔<span class="notif-count hidden" id="notif-count">0</span></button>
     <button class="hdr-btn" id="voice-open-btn" title="Open voice mode" style="border-color:#4a3080;color:#b083f0;">🎤 Voice</button>
@@ -2181,6 +2309,78 @@ async function deleteExplorerNode(nodeId) {
   } catch (e) { showToast('Delete error: ' + e.message, 'red'); }
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+//  FEATURE — DOCUMENTATION VIEWER
+// ══════════════════════════════════════════════════════════════════════════════
+
+let _docsLoaded = false;
+
+async function openDocs() {
+  document.getElementById('docs-overlay').classList.add('open');
+  if (_docsLoaded) return;  // already cached
+
+  const content = document.getElementById('docs-content');
+  content.innerHTML = `
+    <div class="docs-loading">
+      <div class="docs-loading-spinner"></div>
+      <span>Loading documentation…</span>
+    </div>`;
+
+  try {
+    const r = await fetch(`${BASE}/api/readme`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d = await r.json();
+
+    // Configure marked with highlight.js
+    marked.setOptions({
+      highlight: (code, lang) => {
+        if (lang && hljs.getLanguage(lang)) {
+          return hljs.highlight(code, { language: lang }).value;
+        }
+        return hljs.highlightAuto(code).value;
+      },
+      breaks: false,
+      gfm: true,
+    });
+
+    content.innerHTML = marked.parse(d.content);
+
+    // Syntax-highlight any code blocks marked didn't pick up
+    content.querySelectorAll('pre code').forEach(el => {
+      if (!el.dataset.highlighted) hljs.highlightElement(el);
+    });
+
+    // Open external links in new tab
+    content.querySelectorAll('a[href]').forEach(a => {
+      if (a.href && !a.href.startsWith(location.origin)) {
+        a.target = '_blank'; a.rel = 'noopener noreferrer';
+      }
+    });
+
+    _docsLoaded = true;
+  } catch (e) {
+    content.innerHTML = `
+      <div class="docs-loading" style="color:var(--red)">
+        <span style="font-size:2rem">⚠️</span>
+        <span>Failed to load README: ${escHtml(e.message)}</span>
+        <button class="hdr-btn" onclick="(_docsLoaded=false,openDocs())">Retry</button>
+      </div>`;
+  }
+}
+
+function closeDocs() {
+  document.getElementById('docs-overlay').classList.remove('open');
+}
+
+document.getElementById('docs-btn').addEventListener('click', openDocs);
+
+// Esc to close docs (piggyback the existing keydown listener)
+document.addEventListener('keydown', e => {
+  if (e.code === 'Escape' && document.getElementById('docs-overlay').classList.contains('open')) {
+    closeDocs();
+  }
+});
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 connect();
 setInterval(loadStats, 15000);
@@ -2188,6 +2388,26 @@ setInterval(loadSessions, 30000);
 setInterval(pollNotifications, 30000);
 setTimeout(pollNotifications, 3000);  // First poll after 3s
 </script>
+
+<!-- ── Documentation Overlay ── -->
+<div id="docs-overlay">
+  <div id="docs-topbar">
+    <span id="docs-topbar-icon">📖</span>
+    <div id="docs-topbar-info">
+      <div id="docs-topbar-title">Documentation</div>
+      <div id="docs-topbar-sub">README.md · always up to date</div>
+    </div>
+    <button id="docs-close-btn" onclick="closeDocs()">✕ Close</button>
+  </div>
+  <div id="docs-scroll">
+    <div id="docs-content">
+      <div class="docs-loading">
+        <div class="docs-loading-spinner"></div>
+        <span>Loading documentation…</span>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- ── Notification Modal ── -->
 <div id="notif-modal">

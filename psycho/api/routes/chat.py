@@ -17,6 +17,9 @@ from psycho.api.schemas import ChatRequest, ChatResponse, IngestRequest, IngestR
 
 router = APIRouter(prefix="/api", tags=["chat"])
 
+# Project root is 3 levels above this file: routes/ → api/ → psycho/ → project root
+_README_PATH = Path(__file__).parent.parent.parent.parent / "README.md"
+
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest, request: Request):
@@ -55,6 +58,15 @@ async def ingest_text(req: IngestRequest, request: Request):
         domain=req.domain,
     )
     return IngestResponse(**result)
+
+
+@router.get("/readme")
+async def get_readme():
+    """Return the project README.md as raw markdown text."""
+    if not _README_PATH.exists():
+        return JSONResponse(status_code=404, content={"error": "README.md not found"})
+    content = _README_PATH.read_text(encoding="utf-8")
+    return {"content": content, "path": str(_README_PATH.name)}
 
 
 @router.get("/stats")
