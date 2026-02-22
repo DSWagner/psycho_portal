@@ -52,10 +52,13 @@ pendulum>=3.0.0              # Better datetime + timezone handling
 # openai-whisper>=20231117   # Alternative: original OpenAI Whisper
 
 # ── Local TTS (Text-to-Speech) ───────────────────────────────────
-# Uncomment for local TTS (set TTS_PROVIDER=local in .env)
-# pyttsx3>=2.90              # Zero-dependency system TTS (Windows/Mac/Linux)
-# kokoro-onnx>=0.3.0         # High-quality 82M param model (~300MB download)
-# soundfile>=0.12.1          # Required by kokoro-onnx for WAV output
+# RECOMMENDED: Kokoro — open-source, human-sounding, MIT license
+# Set TTS_PROVIDER=local, LOCAL_TTS_BACKEND=kokoro in .env
+# First run auto-downloads ~450MB model from HuggingFace (cached permanently)
+kokoro>=0.9.4                # Best open-source TTS: hexgrad/Kokoro-82M v1.0
+soundfile>=0.12.1            # WAV encoding for Kokoro output
+# pyttsx3>=2.90              # Fallback: zero-download system TTS (robotic quality)
+# kokoro-onnx>=0.4.0         # Legacy ONNX backend if you prefer lighter deps
 
 # ── Google Calendar Integration ──────────────────────────────────
 # Uncomment for Google Calendar sync (set GOOGLE_CALENDAR_CREDENTIALS in .env)

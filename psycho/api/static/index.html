@@ -595,6 +595,12 @@
     }
     #voice-end-btn:hover { background: rgba(252,129,129,.25); box-shadow: 0 0 20px rgba(252,129,129,.3); }
     #voice-stt-unsupported { color: var(--red); font-size: .8rem; display: none; text-align: center; }
+    /* Voice provider badge */
+    #voice-provider-badge {
+      font-size: .65rem; color: var(--muted); text-align: center; margin-top: 6px;
+      letter-spacing: .06em; opacity: .7;
+    }
+    #voice-provider-badge span { color: var(--teal); font-weight: 600; }
 
     /* ── Documentation overlay ────────────────────────────────────── */
     #docs-overlay {
@@ -920,6 +926,7 @@
     <button id="voice-end-btn" title="End call">📵</button>
     <button id="voice-mic-btn" title="Tap to speak">🎤</button>
   </div>
+  <div id="voice-provider-badge">TTS: <span id="voice-tts-label">browser</span> · STT: <span id="voice-stt-label">browser</span></div>
 </div>
 
 <div id="toast"></div>
@@ -1643,8 +1650,13 @@ class TTSEngine {
       const r = await fetch(`${BASE}/api/voice/config`);
       const d = await r.json();
       this.provider = d.provider;
-      document.getElementById('voice-provider-badge').textContent = d.provider + ' tts';
-    } catch { this.provider = 'browser'; }
+      this.voice    = d.voice || '';
+      this._sttProvider = d.stt_provider || 'browser';
+    } catch {
+      this.provider = 'browser';
+      this.voice = '';
+      this._sttProvider = 'browser';
+    }
   }
 
   async speak(text) {
@@ -1822,6 +1834,14 @@ function openVoiceMode() {
   if (!sttEngine.supported) {
     document.getElementById('voice-stt-unsupported').style.display = 'block';
   }
+
+  // Update provider badge
+  const ttsLabel = document.getElementById('voice-tts-label');
+  const sttLabel = document.getElementById('voice-stt-label');
+  if (ttsLabel) ttsLabel.textContent = ttsEngine.provider !== 'browser'
+    ? (ttsEngine.voice ? `Kokoro · ${ttsEngine.voice}` : ttsEngine.provider)
+    : 'browser';
+  if (sttLabel) sttLabel.textContent = ttsEngine._sttProvider || 'browser';
 }
 
 function closeVoiceMode() {
